@@ -1,3 +1,234 @@
+/* Monitoring Container Styles */
+.monitoring-container {
+    width: 100%;
+    height: 100vh;
+    max-height: 600px;
+    max-width: 1024px;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header Styles */
+.monitor-header {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 5px 10px;
+    border-bottom: 1px solid #444;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 50px;
+    flex-shrink: 0;
+}
+
+.monitor-header h1 {
+    margin: 0;
+    font-size: 18px;
+    color: #00ff00;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ff4444;
+}
+
+.status-dot.active {
+    background: #00ff00;
+    box-shadow: 0 0 8px #00ff00;
+}
+
+.data-source {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.data-source.real-data {
+    background: #004400;
+    color: #00ff00;
+}
+
+.data-source.sim-data {
+    background: #444400;
+    color: #ffff00;
+}
+
+.toggle-btn {
+    padding: 4px 8px;
+    background: #333;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.toggle-btn:hover {
+    background: #444;
+}
+
+/* Serial Config Panel */
+.serial-config-panel {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 8px 10px;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+    height: 60px;
+    box-sizing: border-box;
+}
+
+.serial-config-panel h3 {
+    margin: 0 0 5px 0;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.serial-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.serial-controls select,
+.serial-controls input {
+    padding: 3px 6px;
+    border: 1px solid #555;
+    background: #222;
+    color: white;
+    border-radius: 3px;
+    font-size: 11px;
+    height: 24px;
+    box-sizing: border-box;
+}
+
+.serial-controls button {
+    padding: 3px 8px;
+    border: 1px solid #555;
+    background: #333;
+    color: white;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    height: 24px;
+    box-sizing: border-box;
+}
+
+.connect-btn {
+    background: #004400 !important;
+    border-color: #006600 !important;
+}
+
+.disconnect-btn {
+    background: #440000 !important;
+    border-color: #660000 !important;
+}
+
+.connection-status {
+    margin-top: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    display: inline-block;
+}
+
+.connection-status.success {
+    background: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
+    border: 1px solid #00ff00;
+}
+
+.connection-status.error {
+    background: rgba(255, 0, 0, 0.1);
+    color: #ff4444;
+    border: 1px solid #ff4444;
+}
+
+/* Waveform Container */
+.waveform-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+    gap: 5px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.waveform-panel {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.waveform-title {
+    margin: 0 0 5px 0;
+    font-size: 12px;
+    color: #ccc;
+    text-align: left;
+    padding-left: 5px;
+    flex-shrink: 0;
+}
+
+.waveform-canvas {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    border: 1px solid #444;
+    border-radius: 2px;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+/* Responsive adjustments for 1024x600 */
+@media (max-width: 1024px) and (max-height: 600px) {
+    .monitor-header {
+        height: 40px;
+        padding: 3px 8px;
+    }
+    
+    .monitor-header h1 {
+        font-size: 16px;
+    }
+    
+    .serial-config-panel {
+        height: 50px;
+        padding: 5px 8px;
+    }
+    
+    .waveform-container {
+        padding: 3px;
+        gap: 3px;
+    }
+    
+    .waveform-panel {
+        padding: 3px;
+    }
+    
+    .waveform-title {
+        font-size: 11px;
+        margin-bottom: 3px;
+    }
+}
+
 #app {
     height: 100vh;
     text-align: center;

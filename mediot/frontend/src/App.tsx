@@ -518,8 +518,8 @@ function App() {
                     <canvas
                         ref={ecgCanvasRef}
                         className="waveform-canvas sensor1"
-                        width={800}
-                        height={200}
+                        width={980}
+                        height={140}
                     ></canvas>
                 </div>
 
@@ -528,8 +528,8 @@ function App() {
                     <canvas
                         ref={respCanvasRef}
                         className="waveform-canvas sensor2"
-                        width={800}
-                        height={200}
+                        width={980}
+                        height={140}
                     ></canvas>
                 </div>
 
@@ -538,8 +538,8 @@ function App() {
                     <canvas
                         ref={spo2CanvasRef}
                         className="waveform-canvas sensor3"
-                        width={800}
-                        height={200}
+                        width={980}
+                        height={140}
                     ></canvas>
                 </div>
             </div>
