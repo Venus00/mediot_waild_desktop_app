@@ -27,7 +27,7 @@ function App() {
     // Serial port state
     const [serialPorts, setSerialPorts] = useState<main.SerialPortInfo[]>([]);
     const [selectedPort, setSelectedPort] = useState<string>("");
-    const [baudRate, setBaudRate] = useState<number>(9600);
+    const [baudRate, setBaudRate] = useState<number>(115200);
     const [isConnected, setIsConnected] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState<string>("");
     const [sensorData, setSensorData] = useState<main.SensorData | null>(null);
