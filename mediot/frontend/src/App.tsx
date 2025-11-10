@@ -264,14 +264,19 @@ function App() {
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        const stepX = canvas.width / Math.max(ecgData.length - 1, 1);
+        // Fixed step size for scrolling effect
+        const stepX = 2; // 2 pixels per data point for smooth scrolling
+        const visiblePoints = Math.floor(canvas.width / stepX);
+
+        // Get the most recent data points that fit in the visible area
+        const displayData = ecgData.slice(-visiblePoints);
 
         // Draw the line chart
         ctx.strokeStyle = '#00ff00';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        ecgData.forEach((value, index) => {
+        displayData.forEach((value, index) => {
             const x = index * stepX;
             const normalizedY = (value - minValue + padding) / (range + 2 * padding);
             const y = canvas.height - (normalizedY * canvas.height);
@@ -327,14 +332,19 @@ function App() {
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        const stepX = canvas.width / Math.max(respirationData.length - 1, 1);
+        // Fixed step size for scrolling effect
+        const stepX = 2; // 2 pixels per data point for smooth scrolling
+        const visiblePoints = Math.floor(canvas.width / stepX);
+
+        // Get the most recent data points that fit in the visible area
+        const displayData = respirationData.slice(-visiblePoints);
 
         // Draw the line chart
         ctx.strokeStyle = '#00bfff';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        respirationData.forEach((value, index) => {
+        displayData.forEach((value, index) => {
             const x = index * stepX;
             const normalizedY = (value - minValue + padding) / (range + 2 * padding);
             const y = canvas.height - (normalizedY * canvas.height);
@@ -390,14 +400,19 @@ function App() {
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        const stepX = canvas.width / Math.max(spo2Data.length - 1, 1);
+        // Fixed step size for scrolling effect
+        const stepX = 2; // 2 pixels per data point for smooth scrolling
+        const visiblePoints = Math.floor(canvas.width / stepX);
+
+        // Get the most recent data points that fit in the visible area
+        const displayData = spo2Data.slice(-visiblePoints);
 
         // Draw the line chart
         ctx.strokeStyle = '#ff6b6b';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        spo2Data.forEach((value, index) => {
+        displayData.forEach((value, index) => {
             const x = index * stepX;
             const normalizedY = (value - minValue + padding) / (range + 2 * padding);
             const y = canvas.height - (normalizedY * canvas.height);
