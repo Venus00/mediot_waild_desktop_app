@@ -254,24 +254,24 @@ func (a *App) tryParseBinaryFormat() (*SensorData, error) {
 	return result, err
 }
 
-// parseTextFormat parses comma-separated uint32 values
+// parseTextFormat parses comma-separated uint32, uint32, int32 values
 func (a *App) parseTextFormat(dataStr string) (*SensorData, error) {
-	// Expected format: "value1,value2,value3" (e.g., "123456,789012,345678")
+	// Expected format: "value1,value2,value3" (e.g., "123456,789012,-345678")
 	parts := strings.Split(dataStr, ",")
 	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid text format: expected 3 values, got %d", len(parts))
 	}
 
-	// Parse uint32 values
+	// Parse uint32, uint32, int32 values
 	value1, err1 := parseUint32(strings.TrimSpace(parts[0]))
 	value2, err2 := parseUint32(strings.TrimSpace(parts[1]))
-	value3, err3 := parseUint32(strings.TrimSpace(parts[2]))
+	value3, err3 := parseInt32(strings.TrimSpace(parts[2]))
 
 	if err1 != nil || err2 != nil || err3 != nil {
-		return nil, fmt.Errorf("error parsing uint32 values: %v, %v, %v", err1, err2, err3)
+		return nil, fmt.Errorf("error parsing values: %v, %v, %v", err1, err2, err3)
 	}
 
-	log.Printf("Parsed uint32 values: %d, %d, %d", value1, value2, value3)
+	log.Printf("Parsed values: %d (uint32), %d (uint32), %d (int32)", value1, value2, value3)
 
 	return &SensorData{
 		Value1:    float64(value1),
