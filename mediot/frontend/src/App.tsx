@@ -46,7 +46,7 @@ function App() {
             setConnectionStatus(`Found ${ports.length} serial ports`);
         } catch (error) {
             console.error('Error loading serial ports:', error);
-            setConnectionStatus('Error loading serial ports');
+            setConnectionStatus('Error loadparing serial ports');
         }
     };
 

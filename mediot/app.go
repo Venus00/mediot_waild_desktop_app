@@ -254,22 +254,24 @@ func (a *App) tryParseBinaryFormat() (*SensorData, error) {
 	return result, err
 }
 
-// parseTextFormat parses comma-separated hex values
+// parseTextFormat parses comma-separated uint32 values
 func (a *App) parseTextFormat(dataStr string) (*SensorData, error) {
-	// Expected format: "hex_value1,hex_value2,hex_value3" (e.g., "0x1A2B,0xFF00,0x5432")
+	// Expected format: "value1,value2,value3" (e.g., "123456,789012,345678")
 	parts := strings.Split(dataStr, ",")
 	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid text format: expected 3 values, got %d", len(parts))
 	}
 
-	// Parse hex uint32 values
-	value1, err1 := parseHexUint32(strings.TrimSpace(parts[0]))
-	value2, err2 := parseHexUint32(strings.TrimSpace(parts[1]))
-	value3, err3 := parseHexUint32(strings.TrimSpace(parts[2]))
+	// Parse uint32 values
+	value1, err1 := parseUint32(strings.TrimSpace(parts[0]))
+	value2, err2 := parseUint32(strings.TrimSpace(parts[1]))
+	value3, err3 := parseUint32(strings.TrimSpace(parts[2]))
 
 	if err1 != nil || err2 != nil || err3 != nil {
-		return nil, fmt.Errorf("error parsing hex values: %v, %v, %v", err1, err2, err3)
+		return nil, fmt.Errorf("error parsing uint32 values: %v, %v, %v", err1, err2, err3)
 	}
+
+	log.Printf("Parsed uint32 values: %d, %d, %d", value1, value2, value3)
 
 	return &SensorData{
 		Value1:    float64(value1),
@@ -312,6 +314,17 @@ func parseHexUint32(hexStr string) (uint32, error) {
 	val, err := strconv.ParseUint(hexStr, 16, 32)
 	if err != nil {
 		return 0, fmt.Errorf("invalid hex value '%s': %v", hexStr, err)
+	}
+
+	return uint32(val), nil
+}
+
+// parseUint32 parses a decimal string to uint32
+func parseUint32(numStr string) (uint32, error) {
+	// Parse as base 10 uint64, then convert to uint32
+	val, err := strconv.ParseUint(numStr, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid uint32 value '%s': %v", numStr, err)
 	}
 
 	return uint32(val), nil
