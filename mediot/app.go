@@ -167,117 +167,31 @@ func (a *App) ReadSensorData() (*SensorData, error) {
 	}
 
 	// Log raw data from serial port
-	log.Printf("Raw serial data (%d bytes): '%s' [hex: %x]", n, string(tempBuffer[:n]), tempBuffer[:n])
+	dataStr := strings.TrimSpace(string(tempBuffer[:n]))
+	log.Printf("Raw serial data: '%s'", dataStr)
 
-	// Try to parse as text format if data looks like text
-	dataStr := string(tempBuffer[:n])
-	if strings.Contains(dataStr, ",") && n < 100 {
-		return a.parseTextFormat(strings.TrimSpace(dataStr))
-	}
-
-	// Try to parse as binary format if we have at least 12 bytes
-	if n >= 12 {
-		return a.parseBinaryFormat(tempBuffer[:12])
-	}
-
-	return nil, fmt.Errorf("insufficient data for parsing (got %d bytes)", n)
+	// Parse hex format data (e.g., "0x215c,0x3711,0xffffa4d9")
+	return a.parseHexData(dataStr)
 }
 
-// containsTextData checks if buffer contains printable text that might be hex values
-func (a *App) containsTextData() bool {
-	if len(a.dataBuffer) < 3 {
-		return false
-	}
-
-	// Check if data contains commas and mostly printable ASCII characters
-	commaCount := 0
-	printableCount := 0
-
-	for _, b := range a.dataBuffer {
-		if b == ',' {
-			commaCount++
-		}
-		if b >= 32 && b <= 126 { // Printable ASCII range
-			printableCount++
-		}
-	}
-
-	// Consider it text if we have commas and mostly printable characters
-	return commaCount >= 2 && float64(printableCount) > float64(len(a.dataBuffer))*0.8
-}
-
-// tryParseTextFormat attempts to parse accumulated buffer as text format
-func (a *App) tryParseTextFormat() (*SensorData, error) {
-	// Look for complete line (ending with newline or carriage return)
-	dataStr := string(a.dataBuffer)
-
-	// Find the end of a complete line
-	endIdx := -1
-	for i, char := range dataStr {
-		if char == '\n' || char == '\r' {
-			endIdx = i
-			break
-		}
-	}
-
-	if endIdx == -1 && len(dataStr) < 50 {
-		// No complete line yet and buffer is small, wait for more data
-		return nil, fmt.Errorf("waiting for complete text line")
-	}
-
-	var lineToProcess string
-	if endIdx != -1 {
-		lineToProcess = dataStr[:endIdx]
-		// Remove processed data from buffer
-		a.dataBuffer = a.dataBuffer[endIdx+1:]
-	} else {
-		// Process the whole buffer if it's getting large
-		lineToProcess = dataStr
-		a.dataBuffer = a.dataBuffer[:0]
-	}
-
-	return a.parseTextFormat(strings.TrimSpace(lineToProcess))
-}
-
-// tryParseBinaryFormat attempts to parse accumulated buffer as binary format
-func (a *App) tryParseBinaryFormat() (*SensorData, error) {
-	if len(a.dataBuffer) < 12 {
-		return nil, fmt.Errorf("need at least 12 bytes for binary format")
-	}
-
-	// Take first 12 bytes for parsing
-	data := a.dataBuffer[:12]
-	result, err := a.parseBinaryFormat(data)
-
-	if err == nil {
-		// Successfully parsed, remove processed bytes from buffer
-		a.dataBuffer = a.dataBuffer[12:]
-	}
-
-	return result, err
-}
-
-// parseTextFormat parses comma-separated int32 values
-func (a *App) parseTextFormat(dataStr string) (*SensorData, error) {
-	// Log raw text string before parsing
-	log.Printf("Raw text data received: '%s'", dataStr)
-
-	// Expected format: "value1,value2,value3" (e.g., "123456,-789012,345678")
+// parseHexData parses comma-separated hex values (e.g., "0x215c,0x3711,0xffffa4d9")
+func (a *App) parseHexData(dataStr string) (*SensorData, error) {
+	// Expected format: "0xvalue1,0xvalue2,0xvalue3"
 	parts := strings.Split(dataStr, ",")
 	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid text format: expected 3 values, got %d", len(parts))
+		return nil, fmt.Errorf("invalid format: expected 3 hex values, got %d", len(parts))
 	}
 
-	// Parse all as int32 values
-	value1, err1 := parseInt32(strings.TrimSpace(parts[0]))
-	value2, err2 := parseInt32(strings.TrimSpace(parts[1]))
-	value3, err3 := parseInt32(strings.TrimSpace(parts[2]))
+	// Parse hex values to int32
+	value1, err1 := parseHexToInt32(strings.TrimSpace(parts[0]))
+	value2, err2 := parseHexToInt32(strings.TrimSpace(parts[1]))
+	value3, err3 := parseHexToInt32(strings.TrimSpace(parts[2]))
 
 	if err1 != nil || err2 != nil || err3 != nil {
-		return nil, fmt.Errorf("error parsing int32 values: %v, %v, %v", err1, err2, err3)
+		return nil, fmt.Errorf("error parsing hex values: %v, %v, %v", err1, err2, err3)
 	}
 
-	log.Printf("Parsed int32 values: %d, %d, %d", value1, value2, value3)
+	log.Printf("Parsed hex values: %d, %d, %d", value1, value2, value3)
 
 	return &SensorData{
 		Value1:    float64(value1),
@@ -287,39 +201,20 @@ func (a *App) parseTextFormat(dataStr string) (*SensorData, error) {
 	}, nil
 }
 
-// parseBinaryFormat parses binary data as three int32 values
-func (a *App) parseBinaryFormat(data []byte) (*SensorData, error) {
-	// Expect at least 12 bytes for three int32 values
-	if len(data) < 12 {
-		return nil, fmt.Errorf("insufficient binary data: need 12 bytes, got %d", len(data))
+// parseHexToInt32 parses a hex string to int32 (handles both positive and negative values)
+func parseHexToInt32(hexStr string) (int32, error) {
+	// Remove 0x prefix if present
+	if strings.HasPrefix(hexStr, "0x") || strings.HasPrefix(hexStr, "0X") {
+		hexStr = hexStr[2:]
 	}
 
-	// Log raw binary data as hex string before parsing
-	log.Printf("Raw binary data received: %x", data[:12])
-
-	// Parse as little-endian int32 values
-	value1 := int32(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24)
-	value2 := int32(uint32(data[4]) | uint32(data[5])<<8 | uint32(data[6])<<16 | uint32(data[7])<<24)
-	value3 := int32(uint32(data[8]) | uint32(data[9])<<8 | uint32(data[10])<<16 | uint32(data[11])<<24)
-
-	log.Printf("Parsed binary values: %d, %d, %d", value1, value2, value3)
-
-	return &SensorData{
-		Value1:    float64(value1),
-		Value2:    float64(value2),
-		Value3:    float64(value3),
-		Timestamp: time.Now(),
-	}, nil
-}
-
-// parseInt32 parses a decimal string to int32
-func parseInt32(numStr string) (int32, error) {
-	// Parse as base 10 int64, then convert to int32
-	val, err := strconv.ParseInt(numStr, 10, 32)
+	// Parse as uint32 first to handle the full 32-bit range
+	val, err := strconv.ParseUint(hexStr, 16, 32)
 	if err != nil {
-		return 0, fmt.Errorf("invalid int32 value '%s': %v", numStr, err)
+		return 0, fmt.Errorf("invalid hex value '%s': %v", hexStr, err)
 	}
 
+	// Convert uint32 to int32 (this properly handles negative values)
 	return int32(val), nil
 }
 
