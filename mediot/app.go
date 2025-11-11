@@ -166,6 +166,9 @@ func (a *App) ReadSensorData() (*SensorData, error) {
 		return nil, fmt.Errorf("no data received")
 	}
 
+	// Log raw data from serial port
+	log.Printf("Raw serial data (%d bytes): '%s' [hex: %x]", n, string(tempBuffer[:n]), tempBuffer[:n])
+
 	// Try to parse as text format if data looks like text
 	dataStr := string(tempBuffer[:n])
 	if strings.Contains(dataStr, ",") && n < 100 {
