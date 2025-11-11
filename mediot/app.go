@@ -254,24 +254,27 @@ func (a *App) tryParseBinaryFormat() (*SensorData, error) {
 	return result, err
 }
 
-// parseTextFormat parses comma-separated uint32, uint32, int32 values
+// parseTextFormat parses comma-separated int32 values
 func (a *App) parseTextFormat(dataStr string) (*SensorData, error) {
-	// Expected format: "value1,value2,value3" (e.g., "123456,789012,-345678")
+	// Log raw text string before parsing
+	log.Printf("Raw text data received: '%s'", dataStr)
+
+	// Expected format: "value1,value2,value3" (e.g., "123456,-789012,345678")
 	parts := strings.Split(dataStr, ",")
 	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid text format: expected 3 values, got %d", len(parts))
 	}
 
-	// Parse uint32, uint32, int32 values
-	value1, err1 := parseUint32(strings.TrimSpace(parts[0]))
-	value2, err2 := parseUint32(strings.TrimSpace(parts[1]))
+	// Parse all as int32 values
+	value1, err1 := parseInt32(strings.TrimSpace(parts[0]))
+	value2, err2 := parseInt32(strings.TrimSpace(parts[1]))
 	value3, err3 := parseInt32(strings.TrimSpace(parts[2]))
 
 	if err1 != nil || err2 != nil || err3 != nil {
-		return nil, fmt.Errorf("error parsing values: %v, %v, %v", err1, err2, err3)
+		return nil, fmt.Errorf("error parsing int32 values: %v, %v, %v", err1, err2, err3)
 	}
 
-	log.Printf("Parsed values: %d (uint32), %d (uint32), %d (int32)", value1, value2, value3)
+	log.Printf("Parsed int32 values: %d, %d, %d", value1, value2, value3)
 
 	return &SensorData{
 		Value1:    float64(value1),
@@ -281,17 +284,20 @@ func (a *App) parseTextFormat(dataStr string) (*SensorData, error) {
 	}, nil
 }
 
-// parseBinaryFormat parses binary data as three uint32 values
+// parseBinaryFormat parses binary data as three int32 values
 func (a *App) parseBinaryFormat(data []byte) (*SensorData, error) {
-	// Expect at least 12 bytes for three uint32 values
+	// Expect at least 12 bytes for three int32 values
 	if len(data) < 12 {
 		return nil, fmt.Errorf("insufficient binary data: need 12 bytes, got %d", len(data))
 	}
 
-	// Parse as little-endian uint32 values
-	value1 := uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24
-	value2 := uint32(data[4]) | uint32(data[5])<<8 | uint32(data[6])<<16 | uint32(data[7])<<24
-	value3 := uint32(data[8]) | uint32(data[9])<<8 | uint32(data[10])<<16 | uint32(data[11])<<24
+	// Log raw binary data as hex string before parsing
+	log.Printf("Raw binary data received: %x", data[:12])
+
+	// Parse as little-endian int32 values
+	value1 := int32(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24)
+	value2 := int32(uint32(data[4]) | uint32(data[5])<<8 | uint32(data[6])<<16 | uint32(data[7])<<24)
+	value3 := int32(uint32(data[8]) | uint32(data[9])<<8 | uint32(data[10])<<16 | uint32(data[11])<<24)
 
 	log.Printf("Parsed binary values: %d, %d, %d", value1, value2, value3)
 
@@ -301,33 +307,6 @@ func (a *App) parseBinaryFormat(data []byte) (*SensorData, error) {
 		Value3:    float64(value3),
 		Timestamp: time.Now(),
 	}, nil
-}
-
-// parseHexUint32 parses a hex string (with or without 0x prefix) to uint32
-func parseHexUint32(hexStr string) (uint32, error) {
-	// Remove 0x prefix if present
-	if strings.HasPrefix(hexStr, "0x") || strings.HasPrefix(hexStr, "0X") {
-		hexStr = hexStr[2:]
-	}
-
-	// Parse as base 16 uint64, then convert to uint32
-	val, err := strconv.ParseUint(hexStr, 16, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid hex value '%s': %v", hexStr, err)
-	}
-
-	return uint32(val), nil
-}
-
-// parseUint32 parses a decimal string to uint32
-func parseUint32(numStr string) (uint32, error) {
-	// Parse as base 10 uint64, then convert to uint32
-	val, err := strconv.ParseUint(numStr, 10, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid uint32 value '%s': %v", numStr, err)
-	}
-
-	return uint32(val), nil
 }
 
 // parseInt32 parses a decimal string to int32
