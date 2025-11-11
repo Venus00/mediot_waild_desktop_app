@@ -330,6 +330,17 @@ func parseUint32(numStr string) (uint32, error) {
 	return uint32(val), nil
 }
 
+// parseInt32 parses a decimal string to int32
+func parseInt32(numStr string) (int32, error) {
+	// Parse as base 10 int64, then convert to int32
+	val, err := strconv.ParseInt(numStr, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid int32 value '%s': %v", numStr, err)
+	}
+
+	return int32(val), nil
+}
+
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
