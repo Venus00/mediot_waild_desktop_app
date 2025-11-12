@@ -36,7 +36,7 @@ function App() {
     const respCanvasRef = useRef<HTMLCanvasElement>(null);
     const spo2CanvasRef = useRef<HTMLCanvasElement>(null);
 
-    const maxDataPoints = 300;
+    const maxDataPoints = 1000;
 
     // Serial port functions
     const loadSerialPorts = async () => {
