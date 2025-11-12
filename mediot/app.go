@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.bug.st/serial"
@@ -13,10 +14,12 @@ import (
 
 // App struct
 type App struct {
-	ctx         context.Context
-	serialPort  serial.Port
-	isConnected bool
-	dataBuffer  []byte // Buffer to accumulate incoming data
+	ctx              context.Context
+	serialPort       serial.Port
+	isConnected      bool
+	dataBuffer       []byte       // Buffer to accumulate incoming data
+	parsedDataBuffer []SensorData // Buffer to store parsed sensor data
+	bufferMutex      sync.RWMutex // Mutex to protect the buffer
 }
 
 // SerialPortInfo represents information about a serial port
@@ -41,10 +44,16 @@ type SensorData struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{
-		isConnected: false,
-		dataBuffer:  make([]byte, 0),
+	app := &App{
+		isConnected:      false,
+		dataBuffer:       make([]byte, 0),
+		parsedDataBuffer: make([]SensorData, 0),
 	}
+
+	// Start background serial reader
+	go app.serialReader()
+
+	return app
 }
 
 // startup is called when the app starts. The context is saved
@@ -109,6 +118,68 @@ func (a *App) ConnectToSerialPort(portName string, baudRate int) ConnectionResul
 	}
 }
 
+// serialReader runs in background to continuously read and buffer serial data
+func (a *App) serialReader() {
+	for {
+		if !a.isConnected || a.serialPort == nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Set read timeout
+		a.serialPort.SetReadTimeout(10 * time.Millisecond)
+
+		// Read available data from serial port
+		tempBuffer := make([]byte, 100)
+		n, err := a.serialPort.Read(tempBuffer)
+		if err != nil {
+			if !strings.Contains(err.Error(), "timeout") {
+				log.Printf("Error reading from serial port: %v", err)
+			}
+			continue
+		}
+
+		if n == 0 {
+			continue
+		}
+
+		// Add new data to buffer
+		a.bufferMutex.Lock()
+		a.dataBuffer = append(a.dataBuffer, tempBuffer[:n]...)
+
+		// Process complete lines
+		dataStr := string(a.dataBuffer)
+		lines := strings.Split(dataStr, "\n")
+
+		// Process all complete lines except the last one (which might be incomplete)
+		for i := 0; i < len(lines)-1; i++ {
+			line := strings.TrimSpace(lines[i])
+			if line != "" {
+				sensorData, err := a.parseHexData(line)
+				if err == nil {
+					// Add to parsed data buffer
+					a.parsedDataBuffer = append(a.parsedDataBuffer, *sensorData)
+				} else {
+					log.Printf("Error parsing line '%s': %v", line, err)
+				}
+			}
+		}
+
+		// Keep only the last incomplete line in buffer
+		if len(lines) > 0 {
+			lastLine := lines[len(lines)-1]
+			a.dataBuffer = []byte(lastLine)
+		}
+
+		// Clear buffer if it gets too large
+		if len(a.dataBuffer) > 500 {
+			a.dataBuffer = a.dataBuffer[:0]
+		}
+
+		a.bufferMutex.Unlock()
+	}
+}
+
 // DisconnectFromSerialPort disconnects from the current serial port
 func (a *App) DisconnectFromSerialPort() ConnectionResult {
 	if !a.isConnected || a.serialPort == nil {
@@ -143,64 +214,24 @@ func (a *App) IsConnected() bool {
 	return a.isConnected
 }
 
-// ReadSensorData reads and parses sensor data from the serial port
-func (a *App) ReadSensorData() (*SensorData, error) {
-	if !a.isConnected || a.serialPort == nil {
+// ReadSensorData returns all buffered sensor data and clears the buffer
+func (a *App) ReadSensorData() ([]SensorData, error) {
+	if !a.isConnected {
 		return nil, fmt.Errorf("not connected to serial port")
 	}
 
-	// Set read timeout
-	a.serialPort.SetReadTimeout(10 * time.Millisecond)
+	a.bufferMutex.Lock()
+	defer a.bufferMutex.Unlock()
 
-	// Read available data from serial port
-	tempBuffer := make([]byte, 100)
-	n, err := a.serialPort.Read(tempBuffer)
-	if err != nil {
-		if !strings.Contains(err.Error(), "timeout") {
-			log.Printf("Error reading from serial port: %v", err)
-		}
-		return nil, err
-	}
+	// Return all buffered data
+	result := make([]SensorData, len(a.parsedDataBuffer))
+	copy(result, a.parsedDataBuffer)
 
-	if n == 0 {
-		return nil, fmt.Errorf("no data received")
-	}
+	// Clear the buffer after returning data
+	a.parsedDataBuffer = a.parsedDataBuffer[:0]
 
-	// Add new data to buffer
-	a.dataBuffer = append(a.dataBuffer, tempBuffer[:n]...)
-
-	// Log raw data from serial port
-	log.Printf("Raw serial data: '%s'", string(tempBuffer[:n]))
-	log.Printf("Buffer now contains: '%s'", string(a.dataBuffer))
-
-	// Look for complete lines (ending with newline)
-	dataStr := string(a.dataBuffer)
-	lines := strings.Split(dataStr, "\n")
-
-	// Process all complete lines except the last one (which might be incomplete)
-	for i := 0; i < len(lines)-1; i++ {
-		line := strings.TrimSpace(lines[i])
-		if line != "" {
-			log.Printf("Processing complete line: '%s'", line)
-			result, err := a.parseHexData(line)
-			if err == nil {
-				// Remove processed data from buffer
-				processedLength := len(strings.Join(lines[:i+1], "\n")) + 1
-				a.dataBuffer = a.dataBuffer[processedLength:]
-				return result, nil
-			} else {
-				log.Printf("Error parsing line '%s': %v", line, err)
-			}
-		}
-	}
-
-	// If buffer gets too large, clear it
-	if len(a.dataBuffer) > 500 {
-		log.Printf("Buffer too large, clearing: '%s'", string(a.dataBuffer))
-		a.dataBuffer = a.dataBuffer[:0]
-	}
-
-	return nil, fmt.Errorf("waiting for complete data line")
+	log.Printf("Returning %d sensor data points", len(result))
+	return result, nil
 }
 
 // parseHexData parses comma-separated hex values (e.g., "0x215c,0x3711,0xffffa4d9")

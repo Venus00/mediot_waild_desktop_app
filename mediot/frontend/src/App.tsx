@@ -97,40 +97,42 @@ function App() {
 
         sensorReadingInterval.current = setInterval(async () => {
             try {
-                const data = await ReadSensorData();
-                setSensorData(data);
+                const dataArray = await ReadSensorData();
 
-                // Update vitals based on sensor data
-                setVitals({
-                    heartRate: data.value1,
-                    respirationRate: data.value2,
-                    spo2: data.value3,
-                    timestamp: new Date()
-                });
+                // Process each data point in the array
+                dataArray.forEach(data => {
+                    setSensorData(data);
 
-                // Update waveform data
-                const now = Date.now();
+                    // Update vitals based on most recent sensor data
+                    setVitals({
+                        heartRate: data.value1,
+                        respirationRate: data.value2,
+                        spo2: data.value3,
+                        timestamp: new Date()
+                    });
 
-                setEcgData(prev => {
-                    const newData = [...prev, data.value1];
-                    return newData.slice(-maxDataPoints);
-                });
+                    // Update waveform data
+                    setEcgData(prev => {
+                        const newData = [...prev, data.value1];
+                        return newData.slice(-maxDataPoints);
+                    });
 
-                setRespirationData(prev => {
-                    const newData = [...prev, data.value2];
-                    return newData.slice(-maxDataPoints);
-                });
+                    setRespirationData(prev => {
+                        const newData = [...prev, data.value2];
+                        return newData.slice(-maxDataPoints);
+                    });
 
-                setSpo2Data(prev => {
-                    const newData = [...prev, data.value3];
-                    return newData.slice(-maxDataPoints);
+                    setSpo2Data(prev => {
+                        const newData = [...prev, data.value3];
+                        return newData.slice(-maxDataPoints);
+                    });
                 });
 
             } catch (error) {
                 console.error('Error reading sensor data:', error);
                 // Don't update connection status here to avoid spam
             }
-        }, 4); // Read every 4ms to match serial data rate (250 Hz)
+        }, 100); // Read buffered data every 50ms (20 Hz)
     };
 
     const stopSensorDataReading = () => {
