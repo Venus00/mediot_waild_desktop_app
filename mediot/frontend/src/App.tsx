@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort } from '../wailsjs/go/main/App';
+import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort, ReadSensorData } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import Chart from './components/Chart';
 
@@ -38,14 +38,12 @@ function App() {
 
         console.log(`Starting data generation - TestMode: ${isTestMode}`);
 
-        const interval = setInterval(() => {
+        const interval = setInterval(async () => {
             const timestamp = Date.now();
 
-            // Simulate realistic medical waveforms
-            let ecgValue: number, respValue: number, spo2Value: number;
-
             if (isTestMode) {
-                // Test mode: realistic medical waveforms
+                // TEST MODE: Generate realistic medical waveforms
+                let ecgValue: number, respValue: number, spo2Value: number;
 
                 // ECG: Simulate realistic heartbeat pattern (~75 BPM)
                 const heartRate = 75; // BPM
@@ -102,39 +100,67 @@ function App() {
                 const pulseModulation = 2 * Math.sin(beatPhase * 2 * Math.PI); // Pulse wave
                 spo2Value = spo2Baseline + pulseModulation + (Math.random() - 0.5) * 0.8;
 
-            } else {
-                // Normal mode: simpler but still realistic patterns
-                const heartBeat = Math.sin(timestamp / 800) * 15; // ~75 BPM
-                const qrsSpike = Math.random() < 0.08 ? 25 : 0; // QRS complex spikes
-                ecgValue = heartBeat + qrsSpike + (Math.random() - 0.5) * 3;
+                console.log(`Test mode data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
 
-                respValue = 20 * Math.sin(timestamp / 3750) + (Math.random() - 0.5) * 2; // ~16 breaths/min
-                spo2Value = 98 + 1.5 * Math.sin(timestamp / 800) + (Math.random() - 0.5) * 0.5; // Pulse modulated
+                // Add test data to arrays
+                const timeWindow = 30000; // Keep 30 seconds of data
+                const cutoffTime = timestamp - timeWindow;
+
+                setEcgData(prev => {
+                    const newData = [...prev, { timestamp, value: ecgValue }];
+                    return newData.filter(point => point.timestamp >= cutoffTime);
+                });
+
+                setRespData(prev => {
+                    const newData = [...prev, { timestamp, value: respValue }];
+                    return newData.filter(point => point.timestamp >= cutoffTime);
+                });
+
+                setSpo2Data(prev => {
+                    const newData = [...prev, { timestamp, value: spo2Value }];
+                    return newData.filter(point => point.timestamp >= cutoffTime);
+                });
+
+            } else if (isConnected) {
+                // REAL MODE: Read actual serial port data
+                try {
+                    const sensorData = await ReadSensorData();
+
+                    if (sensorData && sensorData.length > 0) {
+                        console.log(`Read ${sensorData.length} sensor data points from serial port`);
+
+                        // Process each sensor data point
+                        sensorData.forEach(data => {
+                            const dataTimestamp = new Date(data.timestamp).getTime();
+
+                            // Add real sensor data to arrays
+                            // Assuming: Value1 = ECG, Value2 = Respiratory, Value3 = SpO2
+                            const timeWindow = 30000; // Keep 30 seconds of data
+                            const cutoffTime = dataTimestamp - timeWindow;
+
+                            setEcgData(prev => {
+                                const newData = [...prev, { timestamp: dataTimestamp, value: data.value1 }];
+                                return newData.filter(point => point.timestamp >= cutoffTime);
+                            });
+
+                            setRespData(prev => {
+                                const newData = [...prev, { timestamp: dataTimestamp, value: data.value2 }];
+                                return newData.filter(point => point.timestamp >= cutoffTime);
+                            });
+
+                            setSpo2Data(prev => {
+                                const newData = [...prev, { timestamp: dataTimestamp, value: data.value3 }];
+                                return newData.filter(point => point.timestamp >= cutoffTime);
+                            });
+                        });
+
+                        console.log(`Real data - ECG: ${sensorData[sensorData.length - 1].value1.toFixed(1)}, Resp: ${sensorData[sensorData.length - 1].value2.toFixed(1)}, SpO2: ${sensorData[sensorData.length - 1].value3.toFixed(1)}`);
+                    }
+                } catch (error) {
+                    console.error('Error reading sensor data:', error);
+                }
             }
-
-            console.log(`Generated data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
-
-            // Add new data points with TIMELINE-BASED MANAGEMENT
-            // Keep data based on time window, not point count
-            const timeWindow = 30000; // Keep 30 seconds of data (much larger buffer)
-            const cutoffTime = timestamp - timeWindow;
-
-            setEcgData(prev => {
-                const newData = [...prev, { timestamp, value: ecgValue }];
-                // Remove only data older than our time window
-                return newData.filter(point => point.timestamp >= cutoffTime);
-            });
-
-            setRespData(prev => {
-                const newData = [...prev, { timestamp, value: respValue }];
-                return newData.filter(point => point.timestamp >= cutoffTime);
-            });
-
-            setSpo2Data(prev => {
-                const newData = [...prev, { timestamp, value: spo2Value }];
-                return newData.filter(point => point.timestamp >= cutoffTime);
-            });
-        }, 4); // 4ms interval for 250Hz sampling
+        }, isTestMode ? 4 : 50); // 4ms for test mode (250Hz), 50ms for real data reading
 
         return () => {
             console.log('Stopping data generation interval');
