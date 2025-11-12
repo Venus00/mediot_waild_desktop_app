@@ -144,7 +144,6 @@ const UPlotChart: React.FC<UPlotChartProps> = ({
                     flex-direction: column;
                     justify-content: center; 
                     align-items: center;
-                    border: 1px solid ${color}40;
                     color: ${color};
                     font-family: Arial;
                     font-size: 14px;

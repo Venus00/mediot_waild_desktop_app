@@ -244,7 +244,7 @@ function App() {
                     />
                 </div>
                 <div className="waveform-panel">
-                    <h4 style={{ margin: '0 0 10px 0', color: '#4ecdc4' }}>UPlot Chart (New) - High Performance</h4>
+                    <h4 style={{ margin: '0 0 10px 0', color: '#4ecdc4' }}> </h4>
                     <UPlotChart
                         title="Sensor Value 2"
                         data={respData}
