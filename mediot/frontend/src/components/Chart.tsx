@@ -72,7 +72,7 @@ const Chart = memo<ChartProps>(({
             ctx.fillText(`${(timeWindowMs / 1000)}s window`, 10, height - 15);
 
             // MEDICAL SCALING: Auto-scale or use provided min/max, ensuring 0 is always visible
-            let minValue, maxValue, range, padding;
+            let minValue: number, maxValue: number, range: number, padding: number;
 
             if (visibleData.length === 0) {
                 // No data: default range centered on 0
