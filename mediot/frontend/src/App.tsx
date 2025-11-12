@@ -276,173 +276,201 @@ function App() {
     };
 
     return (
-        <main className="monitoring-container">
-            <header className="monitor-header">
-                <h1>Patient Monitoring System</h1>
-                <div className="status-indicator">
-                    <span className={`status-dot ${isMonitoring ? 'active' : 'inactive'}`}></span>
-                    <span>{isMonitoring ? 'MONITORING' : 'PAUSED'}</span>
-                    <span className={`data-source ${isConnected ? 'real-data' : isTestMode ? 'test-data' : 'disconnected'}`}>
-                        {isConnected ? 'SERIAL DATA' : isTestMode ? 'TEST DATA' : 'DISCONNECTED'}
-                    </span>
+        <main className="medical-monitor-container">
+            {/* Medical Monitor Header with Vital Signs Display */}
+            <header className="medical-header">
+                <div className="hospital-logo">
+                    <h1>PATIENT MONITOR</h1>
+                    <div className="device-id">Unit: PMU-001</div>
+                </div>
 
-                    {/* OPTIMIZED: Performance indicator */}
-                    <span className="performance-stats" style={{
-                        fontSize: '11px',
-                        color: '#888',
-                        fontFamily: 'monospace'
-                    }}>
-                        {dataStats.totalPoints > 0 && (
-                            `${dataStats.totalPoints} pts | ${dataStats.dataRate.toFixed(0)} Hz`
-                        )}
-                    </span>
+                <div className="patient-info-panel">
+                    <div className="patient-id">Patient ID: #12345</div>
+                    <div className="room-info">Room: ICU-202</div>
+                    <div className="timestamp">{new Date().toLocaleTimeString()}</div>
+                </div>
 
-                    <button
-                        className="toggle-btn"
-                        onClick={() => setIsMonitoring(!isMonitoring)}
-                    >
-                        {isMonitoring ? 'Pause' : 'Resume'}
-                    </button>
+                <div className="vital-signs-summary">
+                    <div className="vital-box heart-rate">
+                        <div className="vital-label">HR</div>
+                        <div className="vital-value">
+                            {ecgData.length > 0 ? '72' : '--'}
+                        </div>
+                        <div className="vital-unit">bpm</div>
+                    </div>
+                    <div className="vital-box resp-rate">
+                        <div className="vital-label">RESP</div>
+                        <div className="vital-value">
+                            {respData.length > 0 ? '16' : '--'}
+                        </div>
+                        <div className="vital-unit">rpm</div>
+                    </div>
+                    <div className="vital-box spo2">
+                        <div className="vital-label">SpO₂</div>
+                        <div className="vital-value">
+                            {spo2Data.length > 0 ? '98' : '--'}
+                        </div>
+                        <div className="vital-unit">%</div>
+                    </div>
+                </div>
+
+                <div className="monitor-status">
+                    <div className={`connection-indicator ${isConnected ? 'connected' : isTestMode ? 'test' : 'disconnected'}`}>
+                        <div className="status-light"></div>
+                        <span>{isConnected ? 'ONLINE' : isTestMode ? 'TEST' : 'OFFLINE'}</span>
+                    </div>
+                    <div className="alarm-status">
+                        <span className="alarm-indicator">🔕</span>
+                        <span>ALARMS OFF</span>
+                    </div>
                 </div>
             </header>
 
-            <div className="controls-section">
-                {/* Test Mode Controls */}
-                <div className="test-controls" style={{
-                    marginBottom: '20px',
-                    padding: '15px',
-                    border: '2px solid #4ecdc4',
-                    borderRadius: '8px',
-                    backgroundColor: 'rgba(78, 205, 196, 0.1)'
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <button
-                            onClick={startTestMode}
-                            disabled={isTestMode || isConnected}
-                            className="connect-btn"
-                            style={{
-                                backgroundColor: isTestMode ? '#6c7b7f' : '#4ecdc4',
-                                minWidth: '120px'
-                            }}
-                        >
-                            {isTestMode ? 'Test Active' : 'Start Test Mode'}
-                        </button>
-                        <button
-                            onClick={stopTestMode}
-                            disabled={!isTestMode}
-                            className="disconnect-btn"
-                            style={{ minWidth: '120px' }}
-                        >
-                            Stop Test Mode
-                        </button>
-                        <span style={{
-                            color: '#4ecdc4',
-                            fontSize: '14px',
-                            fontStyle: 'italic'
-                        }}>
-                        </span>
-                    </div>
+            {/* Medical Configuration Panel - Compact */}
+            <div className="medical-config-panel">
+                <div className="config-section">
+                    <button
+                        onClick={startTestMode}
+                        disabled={isTestMode || isConnected}
+                        className={`medical-btn test-btn ${isTestMode ? 'active' : ''}`}
+                    >
+                        {isTestMode ? 'TEST ACTIVE' : 'START TEST'}
+                    </button>
+
+                    <button
+                        onClick={stopTestMode}
+                        disabled={!isTestMode}
+                        className="medical-btn stop-btn"
+                    >
+                        STOP TEST
+                    </button>
                 </div>
 
-                <div className="serial-controls">
-                    <div className="control-group">
-                        <label htmlFor="port-select">Serial Port:</label>
-                        <select
-                            id="port-select"
-                            value={selectedPort}
-                            onChange={(e) => setSelectedPort(e.target.value)}
-                            disabled={isConnected || isTestMode}
-                        >
-                            <option value="">Select a port...</option>
-                            {serialPorts.map((port) => (
-                                <option key={port.name} value={port.name}>
-                                    {port.name} {port.description && `- ${port.description}`}
-                                </option>
-                            ))}
-                        </select>
-                        <button onClick={loadSerialPorts} disabled={isConnected || isTestMode}>
-                            🔄 Refresh
-                        </button>
-                    </div>
+                <div className="config-section serial-section">
+                    <select
+                        value={selectedPort}
+                        onChange={(e) => setSelectedPort(e.target.value)}
+                        disabled={isConnected || isTestMode}
+                        className="medical-select"
+                    >
+                        <option value="">Select Serial Port</option>
+                        {serialPorts.map((port) => (
+                            <option key={port.name} value={port.name}>
+                                {port.name} - {port.description}
+                            </option>
+                        ))}
+                    </select>
 
-                    <div className="control-group">
-                        <label htmlFor="baud-rate">Baud Rate:</label>
-                        <select
-                            id="baud-rate"
-                            value={baudRate}
-                            onChange={(e) => setBaudRate(Number(e.target.value))}
-                            disabled={isConnected || isTestMode}
-                        >
-                            <option value={9600}>9600</option>
-                            <option value={19200}>19200</option>
-                            <option value={38400}>38400</option>
-                            <option value={57600}>57600</option>
-                            <option value={115200}>115200</option>
-                            <option value={230400}>230400</option>
-                        </select>
-                    </div>
-
-                    <div className="connection-controls">
-                        <button
-                            onClick={connectToSerialPort}
-                            disabled={isConnected || !selectedPort || isTestMode}
-                            className="connect-btn"
-                        >
-                            Connect
-                        </button>
-                        <button
-                            onClick={disconnectFromSerialPort}
-                            disabled={!isConnected}
-                            className="disconnect-btn"
-                        >
-                            Disconnect
-                        </button>
-                    </div>
+                    <button
+                        onClick={isConnected ? disconnectFromSerialPort : connectToSerialPort}
+                        disabled={isTestMode || (!selectedPort && !isConnected)}
+                        className={`medical-btn ${isConnected ? 'disconnect-btn' : 'connect-btn'}`}
+                    >
+                        {isConnected ? 'DISCONNECT' : 'CONNECT'}
+                    </button>
                 </div>
 
-                {connectionStatus && (
-                    <div className={`connection-status ${isConnected ? 'success' : 'error'}`}>
-                        {connectionStatus}
+                <div className="config-section monitoring-section">
+                    <button
+                        className={`medical-btn monitor-btn ${isMonitoring ? 'monitoring' : 'paused'}`}
+                        onClick={() => setIsMonitoring(!isMonitoring)}
+                    >
+                        {isMonitoring ? '⏸ PAUSE' : '▶ RESUME'}
+                    </button>
+
+                    <div className="data-stats">
+                        {dataStats.totalPoints} samples | {dataStats.dataRate.toFixed(0)} Hz
                     </div>
-                )}
+                </div>
             </div>
 
-            <div className="waveform-container">
-                <div className="waveform-panel">
+            {/* Medical Waveform Display */}
+            <div className="medical-waveforms">
+                <div className="waveform-strip ecg-strip">
+                    <div className="waveform-header">
+                        <div className="lead-label">
+                            <span className="lead-name">ECG II</span>
+                            <span className="lead-settings">25mm/s | 10mm/mV</span>
+                        </div>
+                        <div className="waveform-values">
+                            <span className="current-value">
+                                {ecgData.length > 0 ? ecgData[ecgData.length - 1].value.toFixed(1) : '--'}
+                            </span>
+                            <span className="unit">mV</span>
+                        </div>
+                    </div>
                     <Chart
-                        title="ECG"
+                        title=""
                         data={ecgData}
-                        color="#00ff00"
-                        width={980}
-                        height={140}
-                        className="waveform-canvas-sensor1"
+                        color="#00ff41"
+                        width={1000}
+                        height={160}
+                        className="medical-chart"
                         timeWindowMs={10000}
-                    />
-                </div>
-                <div className="waveform-panel">
-                    <Chart
-                        title="Respiratory"
-                        data={respData}
-                        color="#ff0000"
-                        width={980}
-                        height={140}
-                        className="waveform-canvas-sensor2"
-                        timeWindowMs={10000}
+                        min={-50}
+                        max={50}
                     />
                 </div>
 
-                <div className="waveform-panel">
+                <div className="waveform-strip resp-strip">
+                    <div className="waveform-header">
+                        <div className="lead-label">
+                            <span className="lead-name">RESP</span>
+                            <span className="lead-settings">25mm/s | 5mm/unit</span>
+                        </div>
+                        <div className="waveform-values">
+                            <span className="current-value">
+                                {respData.length > 0 ? respData[respData.length - 1].value.toFixed(1) : '--'}
+                            </span>
+                            <span className="unit">units</span>
+                        </div>
+                    </div>
                     <Chart
-                        title="SpO2"
-                        data={spo2Data}
-                        color="#0000ff"
-                        width={980}
-                        height={140}
-                        className="waveform-canvas-sensor3"
+                        title=""
+                        data={respData}
+                        color="#ffaa00"
+                        width={1000}
+                        height={160}
+                        className="medical-chart"
                         timeWindowMs={10000}
+                        min={-40}
+                        max={40}
+                    />
+                </div>
+
+                <div className="waveform-strip spo2-strip">
+                    <div className="waveform-header">
+                        <div className="lead-label">
+                            <span className="lead-name">SpO₂</span>
+                            <span className="lead-settings">25mm/s | 2mm/%</span>
+                        </div>
+                        <div className="waveform-values">
+                            <span className="current-value">
+                                {spo2Data.length > 0 ? spo2Data[spo2Data.length - 1].value.toFixed(0) : '--'}
+                            </span>
+                            <span className="unit">%</span>
+                        </div>
+                    </div>
+                    <Chart
+                        title=""
+                        data={spo2Data}
+                        color="#00aaff"
+                        width={1000}
+                        height={160}
+                        className="medical-chart"
+                        timeWindowMs={10000}
+                        min={90}
+                        max={100}
                     />
                 </div>
             </div>
+
+            {/* Status Messages */}
+            {connectionStatus && (
+                <div className="medical-status-message">
+                    {connectionStatus}
+                </div>
+            )}
         </main>
     );
 }

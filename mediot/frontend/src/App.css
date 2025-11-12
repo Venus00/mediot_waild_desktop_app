@@ -1,51 +1,434 @@
-/* Monitoring Container Styles */
-.monitoring-container {
-    width: 100%;
-    height: 100vh;
-    max-height: 600px;
-    max-width: 1024px;
-    overflow: hidden;
-    padding: 0;
+/* Professional Medical Monitor Interface - 1024x600 Optimized */
+* {
     margin: 0;
+    padding: 0;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
 }
 
-/* Header Styles */
-.monitor-header {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 5px 10px;
-    border-bottom: 1px solid #444;
+body {
+    font-family: 'Courier New', monospace;
+    background: #000;
+    color: #00ff41;
+    overflow: hidden;
+    user-select: none;
+}
+
+/* Medical Monitor Container */
+.medical-monitor-container {
+    width: 100vw;
+    height: 100vh;
+    max-width: 1024px;
+    max-height: 600px;
+    background: linear-gradient(135deg, #000 0%, #001100 100%);
+    display: flex;
+    flex-direction: column;
+    border: 2px solid #004400;
+    overflow: hidden;
+}
+
+/* Medical Header */
+.medical-header {
+    height: 80px;
+    background: linear-gradient(to bottom, #002200, #000);
+    border-bottom: 2px solid #00ff41;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    height: 50px;
-    flex-shrink: 0;
+    padding: 0 15px;
+    box-shadow: 0 2px 10px rgba(0, 255, 65, 0.3);
 }
 
-.monitor-header h1 {
-    margin: 0;
+.hospital-logo h1 {
     font-size: 18px;
-    color: #00ff00;
+    color: #00ff41;
+    text-shadow: 0 0 5px #00ff41;
+    letter-spacing: 2px;
+    margin: 0;
 }
 
-.status-indicator {
+.device-id {
+    font-size: 10px;
+    color: #888;
+    margin-top: 2px;
+}
+
+.patient-info-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+}
+
+.patient-id {
+    color: #00aaff;
+    font-weight: bold;
+}
+
+.room-info {
+    color: #ffaa00;
+}
+
+.timestamp {
+    color: #888;
+    font-size: 10px;
+}
+
+/* Vital Signs Summary */
+.vital-signs-summary {
+    display: flex;
+    gap: 20px;
+}
+
+.vital-box {
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid;
+    border-radius: 4px;
+    padding: 8px 12px;
+    text-align: center;
+    min-width: 60px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.vital-box.heart-rate {
+    border-color: #00ff41;
+    background: rgba(0, 255, 65, 0.05);
+}
+
+.vital-box.resp-rate {
+    border-color: #ffaa00;
+    background: rgba(255, 170, 0, 0.05);
+}
+
+.vital-box.spo2 {
+    border-color: #00aaff;
+    background: rgba(0, 170, 255, 0.05);
+}
+
+.vital-label {
+    font-size: 9px;
+    opacity: 0.8;
+}
+
+.vital-value {
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 0 0 3px currentColor;
+    margin: 2px 0;
+}
+
+.vital-unit {
+    font-size: 8px;
+    opacity: 0.6;
+}
+
+/* Monitor Status */
+.monitor-status {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+    font-size: 10px;
+}
+
+.connection-indicator {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.status-light {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+.connection-indicator.connected .status-light {
+    background: #00ff41;
+    box-shadow: 0 0 8px #00ff41;
+}
+
+.connection-indicator.test .status-light {
+    background: #ffaa00;
+    box-shadow: 0 0 8px #ffaa00;
+}
+
+.connection-indicator.disconnected .status-light {
+    background: #ff4444;
+    box-shadow: 0 0 8px #ff4444;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.alarm-status {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: #666;
+}
+
+/* Medical Configuration Panel */
+.medical-config-panel {
+    height: 50px;
+    background: rgba(0, 0, 0, 0.8);
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 15px;
+    gap: 20px;
+}
+
+.config-section {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 12px;
 }
 
-.data-gap-warning {
+.medical-btn {
+    background: linear-gradient(to bottom, #333, #111);
+    border: 1px solid #555;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+}
+
+.medical-btn:hover:not(:disabled) {
+    border-color: #00ff41;
+    box-shadow: 0 0 5px rgba(0, 255, 65, 0.3);
+}
+
+.medical-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.test-btn.active {
+    background: linear-gradient(to bottom, #004400, #002200);
+    border-color: #00ff41;
+    color: #00ff41;
+    box-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
+}
+
+.connect-btn {
+    border-color: #00aaff;
+}
+
+.disconnect-btn {
+    border-color: #ff4444;
+}
+
+.monitor-btn.monitoring {
+    border-color: #00ff41;
+    color: #00ff41;
+}
+
+.monitor-btn.paused {
+    border-color: #ffaa00;
     color: #ffaa00;
-    font-weight: bold;
-    animation: blink 1s infinite;
 }
 
-@keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0.5; }
+.medical-select {
+    background: #111;
+    border: 1px solid #555;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+.data-stats {
+    font-size: 9px;
+    color: #666;
+    font-family: monospace;
+}
+
+/* Medical Waveforms */
+.medical-waveforms {
+    flex: 1;
+    background: #000;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+}
+
+.waveform-strip {
+    background: linear-gradient(to right, #001100, #000);
+    border: 1px solid #004400;
+    border-radius: 4px;
+    padding: 8px;
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.waveform-strip.ecg-strip {
+    border-color: #00ff41;
+    background: linear-gradient(to right, rgba(0, 255, 65, 0.02), #000);
+}
+
+.waveform-strip.resp-strip {
+    border-color: #ffaa00;
+    background: linear-gradient(to right, rgba(255, 170, 0, 0.02), #000);
+}
+
+.waveform-strip.spo2-strip {
+    border-color: #00aaff;
+    background: linear-gradient(to right, rgba(0, 170, 255, 0.02), #000);
+}
+
+.waveform-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 5px;
+    height: 25px;
+}
+
+.lead-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.lead-name {
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 0 0 3px currentColor;
+}
+
+.ecg-strip .lead-name {
+    color: #00ff41;
+}
+
+.resp-strip .lead-name {
+    color: #ffaa00;
+}
+
+.spo2-strip .lead-name {
+    color: #00aaff;
+}
+
+.lead-settings {
+    font-size: 8px;
+    opacity: 0.6;
+    color: #888;
+}
+
+.waveform-values {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.current-value {
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 0 0 3px currentColor;
+}
+
+.unit {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+/* Medical Chart Canvas */
+.medical-chart {
+    flex: 1;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 2px;
+}
+
+/* Status Message */
+.medical-status-message {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid #555;
+    color: #fff;
+    padding: 5px 15px;
+    border-radius: 3px;
+    font-size: 11px;
+    z-index: 1000;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #111;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1024px) {
+    .medical-header {
+        height: 70px;
+        padding: 0 10px;
+    }
+    
+    .hospital-logo h1 {
+        font-size: 16px;
+    }
+    
+    .vital-signs-summary {
+        gap: 15px;
+    }
+    
+    .vital-box {
+        min-width: 50px;
+        padding: 6px 10px;
+    }
+    
+    .vital-value {
+        font-size: 18px;
+    }
+}
+
+@media (max-height: 600px) {
+    .medical-header {
+        height: 60px;
+    }
+    
+    .medical-config-panel {
+        height: 40px;
+    }
+    
+    .waveform-strip {
+        height: 140px;
+        padding: 6px;
+    }
+    
+    .medical-waveforms {
+        padding: 8px;
+        gap: 6px;
+    }
 }
 
 .status-dot {
