@@ -3,7 +3,6 @@ import './App.css';
 import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import Chart from './components/Chart';
-import UPlotChart from './components/UPlotChart';
 
 interface TimestampedData {
     timestamp: number;
@@ -18,6 +17,7 @@ function App() {
     const [connectionStatus, setConnectionStatus] = useState<string>('');
     const [isMonitoring, setIsMonitoring] = useState<boolean>(true);
     const [dataGapDetected, setDataGapDetected] = useState<boolean>(false);
+    const [isTestMode, setIsTestMode] = useState<boolean>(false);
 
     // Data arrays for three sensors
     const [ecgData, setEcgData] = useState<TimestampedData[]>([]);
@@ -29,17 +29,34 @@ function App() {
         loadSerialPorts();
     }, []);
 
-    // Simulate receiving data from serial port
+    // Simulate receiving data from serial port OR generate test data
     useEffect(() => {
-        if (!isConnected || !isMonitoring) return;
+        if ((!isConnected && !isTestMode) || !isMonitoring) {
+            console.log(`Data generation stopped - Connected: ${isConnected}, TestMode: ${isTestMode}, Monitoring: ${isMonitoring}`);
+            return;
+        }
+
+        console.log(`Starting data generation - TestMode: ${isTestMode}`);
 
         const interval = setInterval(() => {
             const timestamp = Date.now();
 
-            // Simulate three sensor values
-            const ecgValue = 60 + Math.sin(timestamp / 100) * 20 + (Math.random() - 0.5) * 5;
-            const respValue = 40 + Math.cos(timestamp / 500) * 15 + (Math.random() - 0.5) * 3;
-            const spo2Value = 95 + Math.sin(timestamp / 300) * 3 + (Math.random() - 0.5) * 2;
+            // Simulate three sensor values with different patterns for testing
+            let ecgValue: number, respValue: number, spo2Value: number;
+
+            if (isTestMode) {
+                // Test mode: more varied patterns for better chart testing
+                ecgValue = 60 + Math.sin(timestamp / 150) * 25 + Math.cos(timestamp / 200) * 10 + (Math.random() - 0.5) * 8;
+                respValue = 40 + Math.sin(timestamp / 800) * 20 + (Math.random() - 0.5) * 5;
+                spo2Value = 95 + Math.sin(timestamp / 400) * 4 + Math.cos(timestamp / 600) * 2 + (Math.random() - 0.5) * 3;
+            } else {
+                // Normal mode: original patterns
+                ecgValue = 60 + Math.sin(timestamp / 100) * 20 + (Math.random() - 0.5) * 5;
+                respValue = 40 + Math.cos(timestamp / 500) * 15 + (Math.random() - 0.5) * 3;
+                spo2Value = 95 + Math.sin(timestamp / 300) * 3 + (Math.random() - 0.5) * 2;
+            }
+
+            console.log(`Generated data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
 
             // Add new data points with TIMELINE-BASED MANAGEMENT
             // Keep data based on time window, not point count
@@ -63,8 +80,11 @@ function App() {
             });
         }, 4); // 4ms interval for 250Hz sampling
 
-        return () => clearInterval(interval);
-    }, [isConnected, isMonitoring]);
+        return () => {
+            console.log('Stopping data generation interval');
+            clearInterval(interval);
+        };
+    }, [isConnected, isMonitoring, isTestMode]);
 
     // Periodic cleanup of old data (runs every 30 seconds)
     useEffect(() => {
@@ -142,6 +162,20 @@ function App() {
         }
     };
 
+    const startTestMode = () => {
+        setIsTestMode(true);
+        setConnectionStatus('Test mode active - generating random data');
+        // Clear previous data when starting test mode
+        setEcgData([]);
+        setRespData([]);
+        setSpo2Data([]);
+    };
+
+    const stopTestMode = () => {
+        setIsTestMode(false);
+        setConnectionStatus('Test mode stopped');
+    };
+
     return (
         <main className="monitoring-container">
             <header className="monitor-header">
@@ -149,8 +183,8 @@ function App() {
                 <div className="status-indicator">
                     <span className={`status-dot ${isMonitoring ? 'active' : 'inactive'}`}></span>
                     <span>{isMonitoring ? 'MONITORING' : 'PAUSED'}</span>
-                    <span className={`data-source ${isConnected ? 'real-data' : 'disconnected'}`}>
-                        {isConnected ? 'SERIAL DATA' : 'DISCONNECTED'}
+                    <span className={`data-source ${isConnected ? 'real-data' : isTestMode ? 'test-data' : 'disconnected'}`}>
+                        {isConnected ? 'SERIAL DATA' : isTestMode ? 'TEST DATA' : 'DISCONNECTED'}
                     </span>
                     {dataGapDetected && isConnected && (
                         <span className="data-gap-warning">
@@ -167,6 +201,43 @@ function App() {
             </header>
 
             <div className="controls-section">
+                {/* Test Mode Controls */}
+                <div className="test-controls" style={{
+                    marginBottom: '20px',
+                    padding: '15px',
+                    border: '2px solid #4ecdc4',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(78, 205, 196, 0.1)'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <button
+                            onClick={startTestMode}
+                            disabled={isTestMode || isConnected}
+                            className="connect-btn"
+                            style={{
+                                backgroundColor: isTestMode ? '#6c7b7f' : '#4ecdc4',
+                                minWidth: '120px'
+                            }}
+                        >
+                            {isTestMode ? 'Test Active' : 'Start Test Mode'}
+                        </button>
+                        <button
+                            onClick={stopTestMode}
+                            disabled={!isTestMode}
+                            className="disconnect-btn"
+                            style={{ minWidth: '120px' }}
+                        >
+                            Stop Test Mode
+                        </button>
+                        <span style={{
+                            color: '#4ecdc4',
+                            fontSize: '14px',
+                            fontStyle: 'italic'
+                        }}>
+                        </span>
+                    </div>
+                </div>
+
                 <div className="serial-controls">
                     <div className="control-group">
                         <label htmlFor="port-select">Serial Port:</label>
@@ -174,7 +245,7 @@ function App() {
                             id="port-select"
                             value={selectedPort}
                             onChange={(e) => setSelectedPort(e.target.value)}
-                            disabled={isConnected}
+                            disabled={isConnected || isTestMode}
                         >
                             <option value="">Select a port...</option>
                             {serialPorts.map((port) => (
@@ -183,7 +254,7 @@ function App() {
                                 </option>
                             ))}
                         </select>
-                        <button onClick={loadSerialPorts} disabled={isConnected}>
+                        <button onClick={loadSerialPorts} disabled={isConnected || isTestMode}>
                             🔄 Refresh
                         </button>
                     </div>
@@ -194,7 +265,7 @@ function App() {
                             id="baud-rate"
                             value={baudRate}
                             onChange={(e) => setBaudRate(Number(e.target.value))}
-                            disabled={isConnected}
+                            disabled={isConnected || isTestMode}
                         >
                             <option value={9600}>9600</option>
                             <option value={19200}>19200</option>
@@ -208,7 +279,7 @@ function App() {
                     <div className="connection-controls">
                         <button
                             onClick={connectToSerialPort}
-                            disabled={isConnected || !selectedPort}
+                            disabled={isConnected || !selectedPort || isTestMode}
                             className="connect-btn"
                         >
                             Connect
@@ -232,38 +303,36 @@ function App() {
 
             <div className="waveform-container">
                 <div className="waveform-panel">
-                    <h4 style={{ margin: '0 0 10px 0', color: '#4ecdc4' }}>UPlot Chart (New) - High Performance</h4>
-                    <UPlotChart
-                        title="Sensor Value 2"
+                    <Chart
+                        title="ECG"
                         data={ecgData}
                         color="#4ecdc4"
                         width={980}
                         height={140}
-                        className="waveform-canvas sensor1"
+                        className="waveform-canvas-sensor1"
                         timeWindowMs={5000}
                     />
                 </div>
                 <div className="waveform-panel">
-                    <h4 style={{ margin: '0 0 10px 0', color: '#4ecdc4' }}> </h4>
-                    <UPlotChart
-                        title="Sensor Value 2"
+                    <Chart
+                        title="Respiratory"
                         data={respData}
                         color="#4ecdc4"
                         width={980}
                         height={140}
-                        className="waveform-canvas sensor2"
+                        className="waveform-canvas-sensor2"
                         timeWindowMs={5000}
                     />
                 </div>
 
                 <div className="waveform-panel">
-                    <UPlotChart
-                        title="Sensor Value 3"
+                    <Chart
+                        title="SpO2"
                         data={spo2Data}
                         color="#45b7d1"
                         width={980}
                         height={140}
-                        className="waveform-canvas sensor3"
+                        className="waveform-canvas-sensor3"
                         timeWindowMs={5000}
                     />
                 </div>

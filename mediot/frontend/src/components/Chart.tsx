@@ -163,7 +163,6 @@ const Chart: React.FC<ChartProps> = ({
 
             if (density < 0.8 && actualPoints > 10) {
                 ctx.fillStyle = '#ffaa00'; // Orange for low density warning
-                ctx.fillText(`⚠ Low Data Density: ${(density * 100).toFixed(0)}%`, 10, 75);
                 ctx.fillStyle = color;
             }
         }
