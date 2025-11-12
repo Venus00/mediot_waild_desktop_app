@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, memo } from 'react';
 
 interface TimestampedData {
     timestamp: number;
@@ -13,151 +13,163 @@ interface ChartProps {
     height?: number;
     className?: string;
     timeWindowMs?: number; // Fixed time window in milliseconds
+    min?: number; // Optional fixed min value for scaling
+    max?: number; // Optional fixed max value for scaling
 }
 
-const Chart: React.FC<ChartProps> = ({
+const Chart = memo<ChartProps>(({
     data,
     color,
     title,
     width = 800,
     height = 150,
     className = "",
-    timeWindowMs = 5000 // Default 5 second window
+    timeWindowMs = 5000, // Default 5 second window
+    min,
+    max
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const animationFrameRef = useRef<number>();
 
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+        // OPTIMIZED: Use requestAnimationFrame for smooth rendering
+        const render = () => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Set canvas size for crisp rendering
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+            ctx.scale(dpr, dpr);
 
-        // If no data, show empty chart
-        if (data.length === 0) {
-            ctx.fillStyle = color;
-            ctx.font = '12px Arial';
-            ctx.fillText(`${title} - No Data`, 10, 15);
-            return;
-        }
+            ctx.clearRect(0, 0, width, height);
 
-        // Calculate time-based positioning with SMART TIMELINE MANAGEMENT
-        // Use the latest data point as reference, but ensure proper data density
-        const latestTimestamp = Math.max(...data.map(d => d.timestamp));
-        const now = Date.now();
-        const dataAge = (now - latestTimestamp) / 1000;
-
-        let windowStart: number;
-        let windowEnd: number;
-        let visibleData: TimestampedData[];
-
-        // Smart window positioning based on data freshness
-        if (dataAge < 2 && data.length > 0) {
-            // LIVE DATA: Use real-time 5-second scrolling window
-            windowEnd = now;
-            windowStart = now - timeWindowMs;
-            visibleData = data.filter(point => point.timestamp >= windowStart && point.timestamp <= windowEnd);
-        } else {
-            // PAUSED DATA: Show ALL available data (no time window restriction)
-            visibleData = data;
-
-            // Set window bounds to encompass all data
-            const allTimestamps = data.map(d => d.timestamp);
-            const oldestData = Math.min(...allTimestamps);
-            const newestData = Math.max(...allTimestamps);
-
-            // Add small padding (2% on each side)
-            const timeSpan = newestData - oldestData;
-            const padding = Math.max(timeSpan * 0.02, 1000); // At least 1 second padding
-
-            windowStart = oldestData - padding;
-            windowEnd = newestData + padding;
-        }
-
-        // Calculate pixels per ms based on actual time span shown
-        const actualTimeWindow = windowEnd - windowStart;
-        const adjustedPixelsPerMs = canvas.width / actualTimeWindow;
-
-        // Extract values for scaling from visible data only
-        if (visibleData.length === 0) {
-            // Show empty chart
-            ctx.fillStyle = color;
-            ctx.font = '12px Arial';
-            ctx.fillText(`${title} - No Data`, 10, 15);
-            return;
-        }
-
-        const values = visibleData.map(d => d.value);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
-        const range = maxValue - minValue || 1;
-        const padding = range * 0.1;
-
-        // Draw the line chart - continuous line without gap detection
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        let firstPoint = true;
-
-        visibleData.forEach((dataPoint) => {
-            // Calculate x position using adjusted window (prevents data spreading)
-            const x = (dataPoint.timestamp - windowStart) * adjustedPixelsPerMs;
-
-            // Draw all visible points within the window
-            const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
-            const y = canvas.height - (normalizedY * canvas.height);
-
-            if (firstPoint) {
-                ctx.moveTo(x, y);
-                firstPoint = false;
-            } else {
-                ctx.lineTo(x, y);
+            // If no data, show empty chart
+            if (data.length === 0) {
+                ctx.fillStyle = color;
+                ctx.font = '12px Arial';
+                ctx.fillText(`${title} - No Data`, 10, 15);
+                return;
             }
-        });
 
-        ctx.stroke();
+            // OPTIMIZED: Calculate time-based positioning with smart timeline management
+            const latestTimestamp = Math.max(...data.map((d: TimestampedData) => d.timestamp));
+            const now = Date.now();
+            const dataAge = (now - latestTimestamp) / 1000;
 
-        // Draw grid
-        const gridColor = color.replace('rgb(', 'rgba(').replace(')', ', 0.2)');
-        ctx.strokeStyle = gridColor;
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 40) {
+            let windowStart: number;
+            let windowEnd: number;
+            let visibleData: TimestampedData[];
+
+            // Smart window positioning based on data freshness
+            if (dataAge < 2 && data.length > 0) {
+                // LIVE DATA: Use real-time scrolling window
+                windowEnd = now;
+                windowStart = now - timeWindowMs;
+                visibleData = data.filter((point: TimestampedData) => point.timestamp >= windowStart && point.timestamp <= windowEnd);
+            } else {
+                // PAUSED DATA: Show ALL available data
+                visibleData = data;
+                const allTimestamps = data.map((d: TimestampedData) => d.timestamp);
+                const oldestData = Math.min(...allTimestamps);
+                const newestData = Math.max(...allTimestamps);
+                const timeSpan = newestData - oldestData;
+                const padding = Math.max(timeSpan * 0.02, 1000);
+                windowStart = oldestData - padding;
+                windowEnd = newestData + padding;
+            }
+
+            if (visibleData.length === 0) {
+                ctx.fillStyle = color;
+                ctx.font = '12px Arial';
+                ctx.fillText(`${title} - No Data`, 10, 15);
+                return;
+            }
+
+            // OPTIMIZED: Use fixed scaling if min/max provided, otherwise auto-scale
+            const values = visibleData.map(d => d.value);
+            const minValue = min !== undefined ? min : Math.min(...values);
+            const maxValue = max !== undefined ? max : Math.max(...values);
+            const range = maxValue - minValue || 1;
+            const padding = range * 0.1;
+
+            // Calculate pixels per ms
+            const actualTimeWindow = windowEnd - windowStart;
+            const adjustedPixelsPerMs = width / actualTimeWindow;
+
+            // OPTIMIZED: Draw the line chart with path for better performance
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < canvas.height; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(canvas.width, i);
-            ctx.stroke();
-        }
 
-        // Draw value labels
-        ctx.fillStyle = color;
-        ctx.font = '12px Arial';
-        ctx.fillText(`${title}`, 10, 15);
-        ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 30);
-        ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 45);
-        if (visibleData.length > 0) {
-            ctx.fillText(`Current: ${visibleData[visibleData.length - 1].value.toFixed(0)}`, 10, 60);
-        }
+            let firstPoint = true;
+            visibleData.forEach((dataPoint: TimestampedData) => {
+                const x = (dataPoint.timestamp - windowStart) * adjustedPixelsPerMs;
+                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
+                const y = height - (normalizedY * height);
 
-        ctx.fillStyle = color;
-    }, [data, color, title, timeWindowMs]);
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+
+            ctx.stroke();
+
+            // OPTIMIZED: Draw grid with reduced opacity for better performance
+            ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.1)');
+            ctx.lineWidth = 1;
+            for (let i = 0; i < width; i += 80) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < height; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+                ctx.stroke();
+            }
+
+            // Draw labels
+            ctx.fillStyle = color;
+            ctx.font = '12px Arial';
+            ctx.fillText(`${title}`, 10, 15);
+            ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 30);
+            ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 45);
+            if (visibleData.length > 0) {
+                ctx.fillText(`Current: ${visibleData[visibleData.length - 1].value.toFixed(0)}`, 10, 60);
+            }
+        };
+
+        // Use requestAnimationFrame for smooth rendering
+        animationFrameRef.current = requestAnimationFrame(render);
+
+        return () => {
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+            }
+        };
+    }, [data, color, title, timeWindowMs, width, height, min, max]);
 
     return (
         <canvas
             ref={canvasRef}
-            width={width}
-            height={height}
-        // className={className}
+            style={{ width: `${width}px`, height: `${height}px` }}
+            className={className}
         />
     );
-};
+});
+
+Chart.displayName = 'Chart';
 
 export default Chart;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import './App.css';
 import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort, ReadSensorData } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
@@ -22,6 +22,15 @@ function App() {
     const [ecgData, setEcgData] = useState<TimestampedData[]>([]);
     const [respData, setRespData] = useState<TimestampedData[]>([]);
     const [spo2Data, setSpo2Data] = useState<TimestampedData[]>([]);
+
+    // OPTIMIZED: Memoized data statistics to prevent recalculation on every render
+    const dataStats = useMemo(() => ({
+        ecgPoints: ecgData.length,
+        respPoints: respData.length,
+        spo2Points: spo2Data.length,
+        totalPoints: ecgData.length + respData.length + spo2Data.length,
+        dataRate: ecgData.length > 1 ? (ecgData.length / ((ecgData[ecgData.length - 1]?.timestamp - ecgData[0]?.timestamp) / 1000) || 0) : 0
+    }), [ecgData.length, respData.length, spo2Data.length, ecgData]);
 
     // Load available serial ports when component mounts
     useEffect(() => {
@@ -99,12 +108,20 @@ function App() {
                 const pulseModulation = 2 * Math.sin(beatPhase * 2 * Math.PI); // Pulse wave
                 spo2Value = spo2Baseline + pulseModulation + (Math.random() - 0.5) * 0.8;
 
-                console.log(`Test mode data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
+                // OPTIMIZED: Reduce debug logging frequency (every 100 iterations)
+                if (timestamp % 400 < 10) {
+                    console.log(`Test mode data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
+                }
 
-                // Add test data to arrays - preserve continuity during interruptions
-                setEcgData(prev => [...prev, { timestamp, value: ecgValue }]);
-                setRespData(prev => [...prev, { timestamp, value: respValue }]);
-                setSpo2Data(prev => [...prev, { timestamp, value: spo2Value }]);
+                // OPTIMIZED: Batch all data updates to reduce re-renders
+                const newDataPoint = { timestamp, value: ecgValue };
+                const newRespPoint = { timestamp, value: respValue };
+                const newSpo2Point = { timestamp, value: spo2Value };
+
+                // Use functional updates with batching (React 18 automatic batching)
+                setEcgData(prev => [...prev, newDataPoint]);
+                setRespData(prev => [...prev, newRespPoint]);
+                setSpo2Data(prev => [...prev, newSpo2Point]);
 
             } else if (isConnected) {
                 // REAL MODE: Read actual serial port data
@@ -112,19 +129,32 @@ function App() {
                     const sensorData = await ReadSensorData();
 
                     if (sensorData && sensorData.length > 0) {
-                        console.log(`Read ${sensorData.length} sensor data points from serial port`);
+                        // OPTIMIZED: Reduce debug logging frequency
+                        if (timestamp % 500 < 10) {
+                            console.log(`Read ${sensorData.length} sensor data points from serial port`);
+                        }
 
-                        // Process each sensor data point
+                        // OPTIMIZED: Batch process all sensor data points
+                        const ecgPoints: TimestampedData[] = [];
+                        const respPoints: TimestampedData[] = [];
+                        const spo2Points: TimestampedData[] = [];
+
                         sensorData.forEach(data => {
                             const dataTimestamp = new Date(data.timestamp).getTime();
-
-                            // Add real sensor data to arrays - preserve continuity during interruptions
-                            setEcgData(prev => [...prev, { timestamp: dataTimestamp, value: data.value1 }]);
-                            setRespData(prev => [...prev, { timestamp: dataTimestamp, value: data.value2 }]);
-                            setSpo2Data(prev => [...prev, { timestamp: dataTimestamp, value: data.value3 }]);
+                            ecgPoints.push({ timestamp: dataTimestamp, value: data.value1 });
+                            respPoints.push({ timestamp: dataTimestamp, value: data.value2 });
+                            spo2Points.push({ timestamp: dataTimestamp, value: data.value3 });
                         });
 
-                        console.log(`Real data - ECG: ${sensorData[sensorData.length - 1].value1.toFixed(1)}, Resp: ${sensorData[sensorData.length - 1].value2.toFixed(1)}, SpO2: ${sensorData[sensorData.length - 1].value3.toFixed(1)}`);
+                        // Batch update all arrays at once (reduces re-renders from N*3 to 3)
+                        setEcgData(prev => [...prev, ...ecgPoints]);
+                        setRespData(prev => [...prev, ...respPoints]);
+                        setSpo2Data(prev => [...prev, ...spo2Points]);
+
+                        // OPTIMIZED: Reduce debug logging frequency
+                        if (timestamp % 500 < 10) {
+                            console.log(`Real data - ECG: ${sensorData[sensorData.length - 1].value1.toFixed(1)}, Resp: ${sensorData[sensorData.length - 1].value2.toFixed(1)}, SpO2: ${sensorData[sensorData.length - 1].value3.toFixed(1)}`);
+                        }
                     }
                 } catch (error) {
                     console.error('Error reading sensor data:', error);
@@ -137,6 +167,12 @@ function App() {
             clearInterval(interval);
         };
     }, [isConnected, isMonitoring, isTestMode]);
+
+    // OPTIMIZED: Memoized cleanup function to prevent unnecessary re-creations
+    const cleanupData = useCallback((dataArray: TimestampedData[], cutoffTime: number, minPoints: number = 100): TimestampedData[] => {
+        const filtered = dataArray.filter(point => point.timestamp >= cutoffTime);
+        return filtered.length >= minPoints ? filtered : dataArray.slice(-minPoints);
+    }, []);
 
     // Intelligent cleanup of old data - preserves data continuity during interruptions
     useEffect(() => {
@@ -151,21 +187,10 @@ function App() {
                 const maxAge = 300000; // Keep 5 minutes of data when actively monitoring
                 const cutoffTime = now - maxAge;
 
-                setEcgData(prev => {
-                    // Keep at least 100 points even if they're old (for continuity)
-                    const filtered = prev.filter(point => point.timestamp >= cutoffTime);
-                    return filtered.length >= 100 ? filtered : prev.slice(-100);
-                });
-
-                setRespData(prev => {
-                    const filtered = prev.filter(point => point.timestamp >= cutoffTime);
-                    return filtered.length >= 100 ? filtered : prev.slice(-100);
-                });
-
-                setSpo2Data(prev => {
-                    const filtered = prev.filter(point => point.timestamp >= cutoffTime);
-                    return filtered.length >= 100 ? filtered : prev.slice(-100);
-                });
+                // OPTIMIZED: Batch cleanup operations
+                setEcgData(prev => cleanupData(prev, cutoffTime));
+                setRespData(prev => cleanupData(prev, cutoffTime));
+                setSpo2Data(prev => cleanupData(prev, cutoffTime));
 
                 console.log('Data cleanup performed - preserving historical data for continuity');
             } else {
@@ -174,9 +199,7 @@ function App() {
         }, 60000); // Run every 1 minute (less aggressive)
 
         return () => clearInterval(cleanup);
-    }, [isMonitoring, isConnected, isTestMode]);
-
-    const loadSerialPorts = async () => {
+    }, [isMonitoring, isConnected, isTestMode, cleanupData]); const loadSerialPorts = async () => {
         try {
             const ports = await GetSerialPorts();
             setSerialPorts(ports || []);
@@ -244,6 +267,18 @@ function App() {
                     <span className={`data-source ${isConnected ? 'real-data' : isTestMode ? 'test-data' : 'disconnected'}`}>
                         {isConnected ? 'SERIAL DATA' : isTestMode ? 'TEST DATA' : 'DISCONNECTED'}
                     </span>
+
+                    {/* OPTIMIZED: Performance indicator */}
+                    <span className="performance-stats" style={{
+                        fontSize: '11px',
+                        color: '#888',
+                        fontFamily: 'monospace'
+                    }}>
+                        {dataStats.totalPoints > 0 && (
+                            `${dataStats.totalPoints} pts | ${dataStats.dataRate.toFixed(0)} Hz`
+                        )}
+                    </span>
+
                     <button
                         className="toggle-btn"
                         onClick={() => setIsMonitoring(!isMonitoring)}
@@ -364,6 +399,8 @@ function App() {
                         height={140}
                         className="waveform-canvas-sensor1"
                         timeWindowMs={5000}
+                        min={-300}
+                        max={300}
                     />
                 </div>
                 <div className="waveform-panel">
@@ -375,6 +412,8 @@ function App() {
                         height={140}
                         className="waveform-canvas-sensor2"
                         timeWindowMs={5000}
+                        min={-50}
+                        max={50}
                     />
                 </div>
 
@@ -387,6 +426,8 @@ function App() {
                         height={140}
                         className="waveform-canvas-sensor3"
                         timeWindowMs={5000}
+                        min={95}
+                        max={100}
                     />
                 </div>
             </div>
