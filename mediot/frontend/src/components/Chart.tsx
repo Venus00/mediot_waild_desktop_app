@@ -284,8 +284,9 @@ const Chart = memo<ChartProps>(({
             style={{
                 width: `${width}px`,
                 height: `${height}px`,
-                border: '1px solid #333',
-                borderRadius: '4px'
+                background: 'transparent',
+                border: 'none',
+                display: 'block'
             }}
             className={className}
         />
