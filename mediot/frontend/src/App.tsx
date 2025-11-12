@@ -41,19 +41,75 @@ function App() {
         const interval = setInterval(() => {
             const timestamp = Date.now();
 
-            // Simulate three sensor values with different patterns for testing
+            // Simulate realistic medical waveforms
             let ecgValue: number, respValue: number, spo2Value: number;
 
             if (isTestMode) {
-                // Test mode: more varied patterns for better chart testing
-                ecgValue = 60 + Math.sin(timestamp / 150) * 25 + Math.cos(timestamp / 200) * 10 + (Math.random() - 0.5) * 8;
-                respValue = 40 + Math.sin(timestamp / 800) * 20 + (Math.random() - 0.5) * 5;
-                spo2Value = 95 + Math.sin(timestamp / 400) * 4 + Math.cos(timestamp / 600) * 2 + (Math.random() - 0.5) * 3;
+                // Test mode: realistic medical waveforms
+
+                // ECG: Simulate realistic heartbeat pattern (~75 BPM)
+                const heartRate = 75; // BPM
+                const beatInterval = 60000 / heartRate; // ms per beat
+                const beatPhase = (timestamp % beatInterval) / beatInterval; // 0-1 phase within beat
+
+                let ecg = 0;
+                if (beatPhase < 0.1) {
+                    // P wave (atrial depolarization)
+                    ecg = 2 * Math.sin(beatPhase * 10 * Math.PI);
+                } else if (beatPhase < 0.15) {
+                    // PR interval (flat)
+                    ecg = 0;
+                } else if (beatPhase < 0.25) {
+                    // QRS complex (ventricular depolarization)
+                    const qrsPhase = (beatPhase - 0.15) / 0.1;
+                    if (qrsPhase < 0.3) {
+                        ecg = -5 * Math.sin(qrsPhase * 3.33 * Math.PI); // Q wave
+                    } else if (qrsPhase < 0.7) {
+                        ecg = 20 * Math.sin((qrsPhase - 0.3) * 2.5 * Math.PI); // R wave
+                    } else {
+                        ecg = -8 * Math.sin((qrsPhase - 0.7) * 3.33 * Math.PI); // S wave
+                    }
+                } else if (beatPhase < 0.4) {
+                    // ST segment (flat)
+                    ecg = 0;
+                } else if (beatPhase < 0.6) {
+                    // T wave (ventricular repolarization)
+                    ecg = 4 * Math.sin((beatPhase - 0.4) * 5 * Math.PI);
+                } else {
+                    // Baseline
+                    ecg = 0;
+                }
+                ecgValue = ecg + (Math.random() - 0.5) * 1.5; // Add realistic noise
+
+                // Respiratory: Realistic breathing pattern (~16 breaths/min)
+                const breathRate = 16; // breaths per minute
+                const breathCycle = 60000 / breathRate; // ms per breath
+                const breathPhase = (timestamp % breathCycle) / breathCycle; // 0-1 phase
+
+                // Inspiration (40%) and expiration (60%) with realistic curve
+                let respiration;
+                if (breathPhase < 0.4) {
+                    // Inspiration - steeper rise
+                    respiration = 25 * Math.sin(breathPhase * 2.5 * Math.PI);
+                } else {
+                    // Expiration - gentler fall
+                    respiration = 25 * Math.sin(breathPhase * Math.PI) * 0.6;
+                }
+                respValue = respiration + (Math.random() - 0.5) * 2;
+
+                // SpO2: Realistic pulse oximetry with heartbeat modulation
+                const spo2Baseline = 98; // Normal oxygen saturation
+                const pulseModulation = 2 * Math.sin(beatPhase * 2 * Math.PI); // Pulse wave
+                spo2Value = spo2Baseline + pulseModulation + (Math.random() - 0.5) * 0.8;
+
             } else {
-                // Normal mode: original patterns
-                ecgValue = 60 + Math.sin(timestamp / 100) * 20 + (Math.random() - 0.5) * 5;
-                respValue = 40 + Math.cos(timestamp / 500) * 15 + (Math.random() - 0.5) * 3;
-                spo2Value = 95 + Math.sin(timestamp / 300) * 3 + (Math.random() - 0.5) * 2;
+                // Normal mode: simpler but still realistic patterns
+                const heartBeat = Math.sin(timestamp / 800) * 15; // ~75 BPM
+                const qrsSpike = Math.random() < 0.08 ? 25 : 0; // QRS complex spikes
+                ecgValue = heartBeat + qrsSpike + (Math.random() - 0.5) * 3;
+
+                respValue = 20 * Math.sin(timestamp / 3750) + (Math.random() - 0.5) * 2; // ~16 breaths/min
+                spo2Value = 98 + 1.5 * Math.sin(timestamp / 800) + (Math.random() - 0.5) * 0.5; // Pulse modulated
             }
 
             console.log(`Generated data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
@@ -306,7 +362,7 @@ function App() {
                     <Chart
                         title="ECG"
                         data={ecgData}
-                        color="#4ecdc4"
+                        color="#00ff00"
                         width={980}
                         height={140}
                         className="waveform-canvas-sensor1"
@@ -317,7 +373,7 @@ function App() {
                     <Chart
                         title="Respiratory"
                         data={respData}
-                        color="#4ecdc4"
+                        color="#ff0000"
                         width={980}
                         height={140}
                         className="waveform-canvas-sensor2"
@@ -329,7 +385,7 @@ function App() {
                     <Chart
                         title="SpO2"
                         data={spo2Data}
-                        color="#45b7d1"
+                        color="#0000ff"
                         width={980}
                         height={140}
                         className="waveform-canvas-sensor3"

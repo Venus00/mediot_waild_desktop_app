@@ -87,7 +87,6 @@ const Chart: React.FC<ChartProps> = ({
             ctx.fillStyle = color;
             ctx.font = '12px Arial';
             ctx.fillText(`${title} - No Data in Window`, 10, 15);
-            ctx.fillText(`Window: ${timeWindowMs / 1000}s`, 10, canvas.height - 10);
             return;
         }
 
@@ -113,9 +112,9 @@ const Chart: React.FC<ChartProps> = ({
             const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
             const y = canvas.height - (normalizedY * canvas.height);
 
-            // Check for time gap (more than 20ms between points)
+            // Check for time gap (more than 100ms between points = significant data loss)
             const timeDiff = dataPoint.timestamp - prevTimestamp;
-            const shouldBreakLine = !firstPoint && timeDiff > 20;
+            const shouldBreakLine = !firstPoint && timeDiff > 100;
 
             if (firstPoint || shouldBreakLine) {
                 ctx.moveTo(x, y);
@@ -202,7 +201,7 @@ const Chart: React.FC<ChartProps> = ({
             ref={canvasRef}
             width={width}
             height={height}
-            className={className}
+        // className={className}
         />
     );
 };
