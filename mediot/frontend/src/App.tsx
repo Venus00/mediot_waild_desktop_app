@@ -3,26 +3,16 @@ import "./App.css";
 import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort, IsConnected, ReadSensorData } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
 
-interface VitalSigns {
-    heartRate: number;
-    respirationRate: number;
-    spo2: number;
-    timestamp: Date;
+interface TimestampedData {
+    timestamp: number; // milliseconds
+    value: number;
 }
 
 function App() {
-    const [vitals, setVitals] = useState<VitalSigns>({
-        heartRate: 72,
-        respirationRate: 16,
-        spo2: 98,
-        timestamp: new Date()
-    });
-
-    const [ecgData, setEcgData] = useState<number[]>([]);
-    const [respirationData, setRespirationData] = useState<number[]>([]);
-    const [spo2Data, setSpo2Data] = useState<number[]>([]);
+    const [ecgData, setEcgData] = useState<TimestampedData[]>([]);
+    const [respirationData, setRespirationData] = useState<TimestampedData[]>([]);
+    const [spo2Data, setSpo2Data] = useState<TimestampedData[]>([]);
     const [isMonitoring, setIsMonitoring] = useState(true);
-    const [useRealData, setUseRealData] = useState(false);
 
     // Serial port state
     const [serialPorts, setSerialPorts] = useState<main.SerialPortInfo[]>([]);
@@ -35,6 +25,11 @@ function App() {
     const ecgCanvasRef = useRef<HTMLCanvasElement>(null);
     const respCanvasRef = useRef<HTMLCanvasElement>(null);
     const spo2CanvasRef = useRef<HTMLCanvasElement>(null);
+
+    // For maintaining 4ms intervals between data points
+    const dataPointCounterRef = useRef<number>(0);
+    const startTimeRef = useRef<number>(Date.now());
+    const chartUpdateIntervalRef = useRef<number | null>(null);
 
     const maxDataPoints = 1000;
 
@@ -57,8 +52,11 @@ function App() {
             const result = await ConnectToSerialPort(selectedPort, baudRate);
             if (result.success) {
                 setIsConnected(true);
-                setUseRealData(true);
                 setConnectionStatus(result.message);
+
+                // Reset timestamp tracking for new connection
+                dataPointCounterRef.current = 0;
+                startTimeRef.current = Date.now();
 
                 // Start reading sensor data
                 startSensorDataReading();
@@ -75,7 +73,6 @@ function App() {
         try {
             const result = await DisconnectFromSerialPort();
             setIsConnected(false);
-            setUseRealData(false);
             setSensorData(null);
             setConnectionStatus(result.message);
 
@@ -103,27 +100,23 @@ function App() {
                 dataArray.forEach(data => {
                     setSensorData(data);
 
-                    // Update vitals based on most recent sensor data
-                    setVitals({
-                        heartRate: data.value1,
-                        respirationRate: data.value2,
-                        spo2: data.value3,
-                        timestamp: new Date()
-                    });
+                    // Calculate timestamp with 4ms interval
+                    const timestamp = startTimeRef.current + (dataPointCounterRef.current * 4);
+                    dataPointCounterRef.current++;
 
-                    // Update waveform data
+                    // Update waveform data with timestamps
                     setEcgData(prev => {
-                        const newData = [...prev, data.value1];
+                        const newData = [...prev, { timestamp, value: data.value1 }];
                         return newData.slice(-maxDataPoints);
                     });
 
                     setRespirationData(prev => {
-                        const newData = [...prev, data.value2];
+                        const newData = [...prev, { timestamp, value: data.value2 }];
                         return newData.slice(-maxDataPoints);
                     });
 
                     setSpo2Data(prev => {
-                        const newData = [...prev, data.value3];
+                        const newData = [...prev, { timestamp, value: data.value3 }];
                         return newData.slice(-maxDataPoints);
                     });
                 });
@@ -132,13 +125,28 @@ function App() {
                 console.error('Error reading sensor data:', error);
                 // Don't update connection status here to avoid spam
             }
-        }, 100); // Read buffered data every 50ms (20 Hz)
+        }, 100); // Read buffered data every 100ms
+
+        // Start chart refresh interval for smooth scrolling
+        if (chartUpdateIntervalRef.current) {
+            clearInterval(chartUpdateIntervalRef.current);
+        }
+        chartUpdateIntervalRef.current = setInterval(() => {
+            // Force re-render of charts every 50ms for smooth scrolling
+            setEcgData(prev => [...prev]);
+            setRespirationData(prev => [...prev]);
+            setSpo2Data(prev => [...prev]);
+        }, 50);
     };
 
     const stopSensorDataReading = () => {
         if (sensorReadingInterval.current) {
             clearInterval(sensorReadingInterval.current);
             sensorReadingInterval.current = null;
+        }
+        if (chartUpdateIntervalRef.current) {
+            clearInterval(chartUpdateIntervalRef.current);
+            chartUpdateIntervalRef.current = null;
         }
     };
 
@@ -149,7 +157,6 @@ function App() {
                 const connected = await IsConnected();
                 setIsConnected(connected);
                 if (connected) {
-                    setUseRealData(true);
                     startSensorDataReading();
                 }
             } catch (error) {
@@ -165,91 +172,6 @@ function App() {
         };
     }, []);
 
-
-
-    // Generate realistic ECG waveform (fallback when not using real data)
-    const generateECGPoint = (time: number, heartRate: number): number => {
-        const beatInterval = 60000 / heartRate; // ms per beat
-        const beatPosition = (time % beatInterval) / beatInterval;
-
-        // Simplified ECG waveform with P, QRS, T waves
-        if (beatPosition < 0.1) {
-            // P wave
-            return 0.3 * Math.sin(beatPosition * 20 * Math.PI);
-        } else if (beatPosition < 0.2) {
-            // PR segment
-            return 0;
-        } else if (beatPosition < 0.3) {
-            // QRS complex
-            if (beatPosition < 0.25) {
-                return -0.5 * Math.sin((beatPosition - 0.2) * 40 * Math.PI);
-            } else {
-                return 2.0 * Math.sin((beatPosition - 0.25) * 40 * Math.PI);
-            }
-        } else if (beatPosition < 0.5) {
-            // ST segment
-            return 0;
-        } else if (beatPosition < 0.7) {
-            // T wave
-            return 0.5 * Math.sin((beatPosition - 0.5) * 10 * Math.PI);
-        } else {
-            // Baseline
-            return 0;
-        }
-    };
-
-    // Generate realistic respiration waveform (fallback when not using real data)
-    const generateRespirationPoint = (time: number, respRate: number): number => {
-        const breathInterval = 60000 / respRate; // ms per breath
-        const breathPosition = (time % breathInterval) / breathInterval;
-        return Math.sin(breathPosition * 2 * Math.PI);
-    };
-
-    // Update vital signs periodically (fallback when not using real data)
-    useEffect(() => {
-        if (!isMonitoring || useRealData) return;
-
-        const vitalInterval = setInterval(() => {
-            setVitals(prev => ({
-                heartRate: prev.heartRate + (Math.random() - 0.5) * 4, // ±2 bpm variation
-                respirationRate: Math.max(12, Math.min(20, prev.respirationRate + (Math.random() - 0.5) * 2)), // 12-20 rpm
-                spo2: Math.max(95, Math.min(100, prev.spo2 + (Math.random() - 0.5) * 2)), // 95-100%
-                timestamp: new Date()
-            }));
-        }, 5000); // Update every 5 seconds
-
-        return () => clearInterval(vitalInterval);
-    }, [isMonitoring, useRealData]);
-
-    // Generate waveform data (fallback when not using real data)
-    useEffect(() => {
-        if (!isMonitoring || useRealData) return;
-
-        const dataInterval = setInterval(() => {
-            const now = Date.now();
-
-            setEcgData(prev => {
-                const newEcgPoint = generateECGPoint(now, vitals.heartRate);
-                const newData = [...prev, newEcgPoint];
-                return newData.slice(-maxDataPoints);
-            });
-
-            setRespirationData(prev => {
-                const newRespPoint = generateRespirationPoint(now, vitals.respirationRate);
-                const newData = [...prev, newRespPoint];
-                return newData.slice(-maxDataPoints);
-            });
-
-            setSpo2Data(prev => {
-                const newSpo2Point = vitals.spo2 + (Math.random() - 0.5) * 2;
-                const newData = [...prev, newSpo2Point];
-                return newData.slice(-maxDataPoints);
-            });
-        }, 50); // 20 fps for smooth waveforms
-
-        return () => clearInterval(dataInterval);
-    }, [isMonitoring, vitals.heartRate, vitals.respirationRate, vitals.spo2, useRealData]);
-
     // Draw Sensor Value 1 chart
     useEffect(() => {
         const canvas = ecgCanvasRef.current;
@@ -260,33 +182,40 @@ function App() {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Auto-scale based on data range
-        const minValue = Math.min(...ecgData);
-        const maxValue = Math.max(...ecgData);
+        // Extract values for scaling
+        const values = ecgData.map(d => d.value);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        // Fixed step size for scrolling effect
-        const stepX = 2; // 2 pixels per data point for smooth scrolling
-        const visiblePoints = Math.floor(canvas.width / stepX);
+        // Calculate time-based positioning
+        const currentTime = Date.now();
+        const timeWindow = 4000; // 4 seconds visible
+        const pixelsPerMs = canvas.width / timeWindow;
 
-        // Get the most recent data points that fit in the visible area
-        const displayData = ecgData.slice(-visiblePoints);
-
-        // Draw the line chart
+        // Draw the line chart based on timestamps
         ctx.strokeStyle = '#00ff00';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        displayData.forEach((value, index) => {
-            const x = index * stepX;
-            const normalizedY = (value - minValue + padding) / (range + 2 * padding);
-            const y = canvas.height - (normalizedY * canvas.height);
+        let firstPoint = true;
+        ecgData.forEach((dataPoint) => {
+            // Calculate x position based on timestamp
+            const timeOffset = currentTime - dataPoint.timestamp;
+            const x = canvas.width - (timeOffset * pixelsPerMs);
 
-            if (index === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
+            // Only draw points that are visible in the current window
+            if (x >= 0 && x <= canvas.width) {
+                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
+                const y = canvas.height - (normalizedY * canvas.height);
+
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
             }
         });
 
@@ -314,8 +243,12 @@ function App() {
         ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
         ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
         if (ecgData.length > 0) {
-            ctx.fillText(`Current: ${ecgData[ecgData.length - 1].toFixed(0)}`, 10, 50);
+            ctx.fillText(`Current: ${ecgData[ecgData.length - 1].value.toFixed(0)}`, 10, 50);
         }
+
+        // Add time scale labels
+        ctx.fillText('4s', 10, canvas.height - 10);
+        ctx.fillText('0s', canvas.width - 20, canvas.height - 10);
     }, [ecgData]);
 
     // Draw Sensor Value 2 chart
@@ -328,101 +261,40 @@ function App() {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Auto-scale based on data range
-        const minValue = Math.min(...respirationData);
-        const maxValue = Math.max(...respirationData);
+        // Extract values for scaling
+        const values = respirationData.map(d => d.value);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        // Fixed step size for scrolling effect
-        const stepX = 2; // 2 pixels per data point for smooth scrolling
-        const visiblePoints = Math.floor(canvas.width / stepX);
+        // Calculate time-based positioning
+        const currentTime = Date.now();
+        const timeWindow = 4000; // 4 seconds visible
+        const pixelsPerMs = canvas.width / timeWindow;
 
-        // Get the most recent data points that fit in the visible area
-        const displayData = respirationData.slice(-visiblePoints);
-
-        // Draw the line chart
-        ctx.strokeStyle = '#00bfff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        displayData.forEach((value, index) => {
-            const x = index * stepX;
-            const normalizedY = (value - minValue + padding) / (range + 2 * padding);
-            const y = canvas.height - (normalizedY * canvas.height);
-
-            if (index === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
-
-        ctx.stroke();
-
-        // Draw grid
-        ctx.strokeStyle = 'rgba(0, 191, 255, 0.2)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < canvas.height; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(canvas.width, i);
-            ctx.stroke();
-        }
-
-        // Draw value labels
-        ctx.fillStyle = '#00bfff';
-        ctx.font = '12px Arial';
-        ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
-        ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
-        if (respirationData.length > 0) {
-            ctx.fillText(`Current: ${respirationData[respirationData.length - 1].toFixed(0)}`, 10, 50);
-        }
-    }, [respirationData]);
-
-    // Draw Sensor Value 3 chart
-    useEffect(() => {
-        const canvas = spo2CanvasRef.current;
-        if (!canvas || spo2Data.length === 0) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Auto-scale based on data range
-        const minValue = Math.min(...spo2Data);
-        const maxValue = Math.max(...spo2Data);
-        const range = maxValue - minValue || 1;
-        const padding = range * 0.1;
-
-        // Fixed step size for scrolling effect
-        const stepX = 2; // 2 pixels per data point for smooth scrolling
-        const visiblePoints = Math.floor(canvas.width / stepX);
-
-        // Get the most recent data points that fit in the visible area
-        const displayData = spo2Data.slice(-visiblePoints);
-
-        // Draw the line chart
+        // Draw the line chart based on timestamps
         ctx.strokeStyle = '#ff6b6b';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        displayData.forEach((value, index) => {
-            const x = index * stepX;
-            const normalizedY = (value - minValue + padding) / (range + 2 * padding);
-            const y = canvas.height - (normalizedY * canvas.height);
+        let firstPoint = true;
+        respirationData.forEach((dataPoint) => {
+            // Calculate x position based on timestamp
+            const timeOffset = currentTime - dataPoint.timestamp;
+            const x = canvas.width - (timeOffset * pixelsPerMs);
 
-            if (index === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
+            // Only draw points that are visible in the current window
+            if (x >= 0 && x <= canvas.width) {
+                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
+                const y = canvas.height - (normalizedY * canvas.height);
+
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
             }
         });
 
@@ -449,9 +321,92 @@ function App() {
         ctx.font = '12px Arial';
         ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
         ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
-        if (spo2Data.length > 0) {
-            ctx.fillText(`Current: ${spo2Data[spo2Data.length - 1].toFixed(0)}`, 10, 50);
+        if (respirationData.length > 0) {
+            ctx.fillText(`Current: ${respirationData[respirationData.length - 1].value.toFixed(0)}`, 10, 50);
         }
+
+        // Add time scale labels
+        ctx.fillText('4s', 10, canvas.height - 10);
+        ctx.fillText('0s', canvas.width - 20, canvas.height - 10);
+    }, [respirationData]);
+
+    // Draw Sensor Value 3 chart
+    useEffect(() => {
+        const canvas = spo2CanvasRef.current;
+        if (!canvas || spo2Data.length === 0) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Extract values for scaling
+        const values = spo2Data.map(d => d.value);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
+        const range = maxValue - minValue || 1;
+        const padding = range * 0.1;
+
+        // Calculate time-based positioning
+        const currentTime = Date.now();
+        const timeWindow = 4000; // 4 seconds visible
+        const pixelsPerMs = canvas.width / timeWindow;
+
+        // Draw the line chart based on timestamps
+        ctx.strokeStyle = '#4ecdc4';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        let firstPoint = true;
+        spo2Data.forEach((dataPoint) => {
+            // Calculate x position based on timestamp
+            const timeOffset = currentTime - dataPoint.timestamp;
+            const x = canvas.width - (timeOffset * pixelsPerMs);
+
+            // Only draw points that are visible in the current window
+            if (x >= 0 && x <= canvas.width) {
+                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
+                const y = canvas.height - (normalizedY * canvas.height);
+
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+        });
+
+        ctx.stroke();
+
+        // Draw grid
+        ctx.strokeStyle = 'rgba(78, 205, 196, 0.2)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < canvas.width; i += 40) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i, canvas.height);
+            ctx.stroke();
+        }
+        for (let i = 0; i < canvas.height; i += 40) {
+            ctx.beginPath();
+            ctx.moveTo(0, i);
+            ctx.lineTo(canvas.width, i);
+            ctx.stroke();
+        }
+
+        // Draw value labels
+        ctx.fillStyle = '#4ecdc4';
+        ctx.font = '12px Arial';
+        ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
+        ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
+        if (spo2Data.length > 0) {
+            ctx.fillText(`Current: ${spo2Data[spo2Data.length - 1].value.toFixed(0)}`, 10, 50);
+        }
+
+        // Add time scale labels
+        ctx.fillText('4s', 10, canvas.height - 10);
+        ctx.fillText('0s', canvas.width - 20, canvas.height - 10);
     }, [spo2Data]);
 
     return (
@@ -461,8 +416,8 @@ function App() {
                 <div className="status-indicator">
                     <span className={`status-dot ${isMonitoring ? 'active' : 'inactive'}`}></span>
                     <span>{isMonitoring ? 'MONITORING' : 'PAUSED'}</span>
-                    <span className={`data-source ${useRealData ? 'real-data' : 'sim-data'}`}>
-                        {useRealData ? 'REAL DATA' : 'SIMULATED'}
+                    <span className={`data-source ${isConnected ? 'real-data' : 'disconnected'}`}>
+                        {isConnected ? 'SERIAL DATA' : 'DISCONNECTED'}
                     </span>
                     <button
                         className="toggle-btn"
