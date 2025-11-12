@@ -1,64 +1,113 @@
-import { useState, useEffect, useRef } from "react";
-import "./App.css";
-import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort, IsConnected, ReadSensorData } from "../wailsjs/go/main/App";
-import { main } from "../wailsjs/go/models";
+import { useState, useEffect } from 'react';
+import './App.css';
+import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort } from '../wailsjs/go/main/App';
+import { main } from '../wailsjs/go/models';
+import Chart from './components/Chart';
 
 interface TimestampedData {
-    timestamp: number; // milliseconds
+    timestamp: number;
     value: number;
 }
 
 function App() {
-    const [ecgData, setEcgData] = useState<TimestampedData[]>([]);
-    const [respirationData, setRespirationData] = useState<TimestampedData[]>([]);
-    const [spo2Data, setSpo2Data] = useState<TimestampedData[]>([]);
-    const [isMonitoring, setIsMonitoring] = useState(true);
-    const [lastDataTime, setLastDataTime] = useState<number>(0);
-    const [dataGapDetected, setDataGapDetected] = useState(false);
-
-    // Serial port state
     const [serialPorts, setSerialPorts] = useState<main.SerialPortInfo[]>([]);
-    const [selectedPort, setSelectedPort] = useState<string>("");
+    const [selectedPort, setSelectedPort] = useState<string>('');
     const [baudRate, setBaudRate] = useState<number>(115200);
-    const [isConnected, setIsConnected] = useState(false);
-    const [connectionStatus, setConnectionStatus] = useState<string>("");
-    const [sensorData, setSensorData] = useState<main.SensorData | null>(null);
+    const [isConnected, setIsConnected] = useState<boolean>(false);
+    const [connectionStatus, setConnectionStatus] = useState<string>('');
+    const [isMonitoring, setIsMonitoring] = useState<boolean>(true);
+    const [dataGapDetected, setDataGapDetected] = useState<boolean>(false);
 
-    const ecgCanvasRef = useRef<HTMLCanvasElement>(null);
-    const respCanvasRef = useRef<HTMLCanvasElement>(null);
-    const spo2CanvasRef = useRef<HTMLCanvasElement>(null);
+    // Data arrays for three sensors
+    const [ecgData, setEcgData] = useState<TimestampedData[]>([]);
+    const [respData, setRespData] = useState<TimestampedData[]>([]);
+    const [spo2Data, setSpo2Data] = useState<TimestampedData[]>([]);
 
-    const maxDataPoints = 1000;
+    // Load available serial ports when component mounts
+    useEffect(() => {
+        loadSerialPorts();
+    }, []);
 
-    // Serial port functions
+    // Simulate receiving data from serial port
+    useEffect(() => {
+        if (!isConnected || !isMonitoring) return;
+
+        const interval = setInterval(() => {
+            const timestamp = Date.now();
+
+            // Simulate three sensor values
+            const ecgValue = 60 + Math.sin(timestamp / 100) * 20 + (Math.random() - 0.5) * 5;
+            const respValue = 40 + Math.cos(timestamp / 500) * 15 + (Math.random() - 0.5) * 3;
+            const spo2Value = 95 + Math.sin(timestamp / 300) * 3 + (Math.random() - 0.5) * 2;
+
+            // Add new data points
+            setEcgData(prev => {
+                const newData = [...prev, { timestamp, value: ecgValue }];
+                // Keep only last 5 seconds of data (5000ms / 4ms = 1250 points)
+                return newData.slice(-1250);
+            });
+
+            setRespData(prev => {
+                const newData = [...prev, { timestamp, value: respValue }];
+                return newData.slice(-1250);
+            });
+
+            setSpo2Data(prev => {
+                const newData = [...prev, { timestamp, value: spo2Value }];
+                return newData.slice(-1250);
+            });
+        }, 4); // 4ms interval for 250Hz sampling
+
+        return () => clearInterval(interval);
+    }, [isConnected, isMonitoring]);
+
+    // Monitor for data gaps
+    useEffect(() => {
+        const checkDataGap = () => {
+            const now = Date.now();
+            const threshold = 100; // 100ms threshold for gap detection
+
+            const ecgGap = ecgData.length > 0 && (now - ecgData[ecgData.length - 1].timestamp) > threshold;
+            const respGap = respData.length > 0 && (now - respData[respData.length - 1].timestamp) > threshold;
+            const spo2Gap = spo2Data.length > 0 && (now - spo2Data[spo2Data.length - 1].timestamp) > threshold;
+
+            setDataGapDetected(ecgGap || respGap || spo2Gap);
+        };
+
+        const gapCheckInterval = setInterval(checkDataGap, 50);
+        return () => clearInterval(gapCheckInterval);
+    }, [ecgData, respData, spo2Data]);
+
     const loadSerialPorts = async () => {
         try {
             const ports = await GetSerialPorts();
-            setSerialPorts(ports);
-            setConnectionStatus(`Found ${ports.length} serial ports`);
+            setSerialPorts(ports || []);
         } catch (error) {
-            console.error('Error loading serial ports:', error);
-            setConnectionStatus('Error loadparing serial ports');
+            console.error('Failed to load serial ports:', error);
+            setConnectionStatus('Failed to load serial ports');
         }
     };
 
     const connectToSerialPort = async () => {
-        try {
-            if (!selectedPort) return;
+        if (!selectedPort) return;
 
+        try {
+            setConnectionStatus('Connecting...');
             const result = await ConnectToSerialPort(selectedPort, baudRate);
+
             if (result.success) {
                 setIsConnected(true);
                 setConnectionStatus(result.message);
-
-                // Start reading sensor data
-                startSensorDataReading();
+                // Clear previous data when connecting
+                setEcgData([]);
+                setRespData([]);
+                setSpo2Data([]);
             } else {
                 setConnectionStatus(result.message);
             }
         } catch (error) {
-            console.error('Error connecting to serial port:', error);
-            setConnectionStatus('Failed to connect to serial port');
+            console.error('Connection error:', error);
+            setConnectionStatus('Connection error: ' + String(error));
         }
     };
 
@@ -66,379 +115,14 @@ function App() {
         try {
             const result = await DisconnectFromSerialPort();
             setIsConnected(false);
-            setSensorData(null);
             setConnectionStatus(result.message);
-            setDataGapDetected(false);
-            setLastDataTime(0);
-
-            // Stop reading sensor data
-            stopSensorDataReading();
         } catch (error) {
-            console.error('Error disconnecting from serial port:', error);
-            setConnectionStatus('Error during disconnection');
+            console.error('Disconnect error:', error);
+            setConnectionStatus('Disconnect error: ' + String(error));
         }
     };
 
-    // Sensor data reading
-    const sensorReadingInterval = useRef<number | null>(null);
-
-    const startSensorDataReading = () => {
-        if (sensorReadingInterval.current) {
-            clearInterval(sensorReadingInterval.current);
-        }
-
-        sensorReadingInterval.current = setInterval(async () => {
-            try {
-                const dataArray = await ReadSensorData();
-
-                if (dataArray.length > 0) {
-                    // Reset gap detection when data is received
-                    setDataGapDetected(false);
-
-                    // Process each data point in the array
-                    dataArray.forEach(data => {
-                        setSensorData(data);
-
-                        // Use the actual timestamp from the backend (convert to milliseconds)
-                        const timestamp = new Date(data.timestamp).getTime();
-
-                        // Check for data gaps (if more than 20ms between data points)
-                        if (lastDataTime > 0 && (timestamp - lastDataTime) > 20) {
-                            console.log(`Data gap detected: ${timestamp - lastDataTime}ms`);
-                        }
-                        setLastDataTime(timestamp);
-
-                        // Update waveform data with real timestamps
-                        setEcgData(prev => {
-                            const newData = [...prev, { timestamp, value: data.value1 }];
-                            return newData.slice(-maxDataPoints);
-                        });
-
-                        setRespirationData(prev => {
-                            const newData = [...prev, { timestamp, value: data.value2 }];
-                            return newData.slice(-maxDataPoints);
-                        });
-
-                        setSpo2Data(prev => {
-                            const newData = [...prev, { timestamp, value: data.value3 }];
-                            return newData.slice(-maxDataPoints);
-                        });
-                    });
-                } else {
-                    // No data received, check if we should mark a gap
-                    const now = Date.now();
-                    if (lastDataTime > 0 && (now - lastDataTime) > 100) {
-                        setDataGapDetected(true);
-                    }
-                }
-
-            } catch (error) {
-                console.error('Error reading sensor data:', error);
-                setDataGapDetected(true);
-            }
-        }, 100); // Read buffered data every 100ms
-    };
-
-    const stopSensorDataReading = () => {
-        if (sensorReadingInterval.current) {
-            clearInterval(sensorReadingInterval.current);
-            sensorReadingInterval.current = null;
-        }
-    };
-
-    // Check connection status on startup
-    useEffect(() => {
-        const checkConnection = async () => {
-            try {
-                const connected = await IsConnected();
-                setIsConnected(connected);
-                if (connected) {
-                    startSensorDataReading();
-                }
-            } catch (error) {
-                console.error('Error checking connection status:', error);
-            }
-        };
-
-        checkConnection();
-        loadSerialPorts(); // Load ports on startup
-
-        return () => {
-            stopSensorDataReading();
-        };
-    }, []);
-
-    // Draw Sensor Value 1 chart
-    useEffect(() => {
-        const canvas = ecgCanvasRef.current;
-        if (!canvas || ecgData.length === 0) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Extract values for scaling
-        const values = ecgData.map(d => d.value);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
-        const range = maxValue - minValue || 1;
-        const padding = range * 0.1;
-
-        // Calculate time-based positioning (left to right) - TRUE FULL WIDTH
-        if (ecgData.length === 0) return;
-
-        // Find actual data time range and stretch to full canvas width
-        const timestamps = ecgData.map(d => d.timestamp);
-        const minTimestamp = Math.min(...timestamps);
-        const maxTimestamp = Math.max(...timestamps);
-        const actualTimeRange = Math.max(maxTimestamp - minTimestamp, 100); // Minimum 100ms
-        const pixelsPerMs = canvas.width / actualTimeRange; // Stretch to full width
-
-        // Draw the line chart based on timestamps with gap detection
-        ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        let firstPoint = true;
-        let prevTimestamp = 0;
-        let prevX = -1;
-
-        ecgData.forEach((dataPoint) => {
-            // Calculate x position - always fills 0 to canvas.width
-            const x = (dataPoint.timestamp - minTimestamp) * pixelsPerMs;
-
-            // Only draw points that are visible in the current window
-            if (x >= 0 && x <= canvas.width) {
-                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
-                const y = canvas.height - (normalizedY * canvas.height);
-
-                // Check for time gap (more than 20ms between points)
-                const timeDiff = dataPoint.timestamp - prevTimestamp;
-                const shouldBreakLine = !firstPoint && timeDiff > 20;
-
-                if (firstPoint || shouldBreakLine) {
-                    ctx.moveTo(x, y);
-                    firstPoint = false;
-                } else {
-                    ctx.lineTo(x, y);
-                }
-
-                prevTimestamp = dataPoint.timestamp;
-                prevX = x;
-            }
-        }); ctx.stroke();
-
-        // Draw grid
-        ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < canvas.height; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(canvas.width, i);
-            ctx.stroke();
-        }
-
-        // Draw value labels
-        ctx.fillStyle = '#00ff00';
-        ctx.font = '12px Arial';
-        ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
-        ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
-        if (ecgData.length > 0) {
-            ctx.fillText(`Current: ${ecgData[ecgData.length - 1].value.toFixed(0)}`, 10, 50);
-        }
-
-        // Add time scale labels (left = oldest, right = newest)
-        const timeRangeSeconds = actualTimeRange / 1000;
-        ctx.fillText('Start', 10, canvas.height - 10);
-        ctx.fillText(`+${timeRangeSeconds.toFixed(1)}s`, canvas.width - 60, canvas.height - 10);
-    }, [ecgData]);    // Draw Sensor Value 2 chart
-    useEffect(() => {
-        const canvas = respCanvasRef.current;
-        if (!canvas || respirationData.length === 0) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Extract values for scaling
-        const values = respirationData.map(d => d.value);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
-        const range = maxValue - minValue || 1;
-        const padding = range * 0.1;
-
-        // Calculate time-based positioning (left to right) - TRUE FULL WIDTH
-        if (respirationData.length === 0) return;
-
-        // Find actual data time range and stretch to full canvas width
-        const timestamps = respirationData.map(d => d.timestamp);
-        const minTimestamp = Math.min(...timestamps);
-        const maxTimestamp = Math.max(...timestamps);
-        const actualTimeRange = Math.max(maxTimestamp - minTimestamp, 100); // Minimum 100ms
-        const pixelsPerMs = canvas.width / actualTimeRange; // Stretch to full width
-
-        // Draw the line chart based on timestamps with gap detection
-        ctx.strokeStyle = '#ff6b6b';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        let firstPoint = true;
-        let prevTimestamp = 0;
-        let prevX = -1;
-
-        respirationData.forEach((dataPoint) => {
-            // Calculate x position - always fills 0 to canvas.width
-            const x = (dataPoint.timestamp - minTimestamp) * pixelsPerMs;
-
-            // Only draw points that are visible in the current window
-            if (x >= 0 && x <= canvas.width) {
-                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
-                const y = canvas.height - (normalizedY * canvas.height);
-
-                // Check for time gap (more than 20ms between points)
-                const timeDiff = dataPoint.timestamp - prevTimestamp;
-                const shouldBreakLine = !firstPoint && timeDiff > 20;
-
-                if (firstPoint || shouldBreakLine) {
-                    ctx.moveTo(x, y);
-                    firstPoint = false;
-                } else {
-                    ctx.lineTo(x, y);
-                }
-
-                prevTimestamp = dataPoint.timestamp;
-                prevX = x;
-            }
-        }); ctx.stroke();
-
-        // Draw grid
-        ctx.strokeStyle = 'rgba(255, 107, 107, 0.2)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < canvas.height; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(canvas.width, i);
-            ctx.stroke();
-        }
-
-        // Draw value labels
-        ctx.fillStyle = '#ff6b6b';
-        ctx.font = '12px Arial';
-        ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
-        ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
-        if (respirationData.length > 0) {
-            ctx.fillText(`Current: ${respirationData[respirationData.length - 1].value.toFixed(0)}`, 10, 50);
-        }
-
-        // Add time scale labels (left = oldest, right = newest)
-        const timeRangeSeconds = actualTimeRange / 1000;
-        ctx.fillText('Start', 10, canvas.height - 10);
-        ctx.fillText(`+${timeRangeSeconds.toFixed(1)}s`, canvas.width - 60, canvas.height - 10);
-    }, [respirationData]);    // Draw Sensor Value 3 chart
-    useEffect(() => {
-        const canvas = spo2CanvasRef.current;
-        if (!canvas || spo2Data.length === 0) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Extract values for scaling
-        const values = spo2Data.map(d => d.value);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
-        const range = maxValue - minValue || 1;
-        const padding = range * 0.1;
-
-        // Calculate time-based positioning (left to right) - TRUE FULL WIDTH
-        if (spo2Data.length === 0) return;
-
-        // Find actual data time range and stretch to full canvas width
-        const timestamps = spo2Data.map(d => d.timestamp);
-        const minTimestamp = Math.min(...timestamps);
-        const maxTimestamp = Math.max(...timestamps);
-        const actualTimeRange = Math.max(maxTimestamp - minTimestamp, 100); // Minimum 100ms
-        const pixelsPerMs = canvas.width / actualTimeRange; // Stretch to full width
-
-        // Draw the line chart based on timestamps with gap detection
-        ctx.strokeStyle = '#4ecdc4';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        let firstPoint = true;
-        let prevTimestamp = 0;
-        let prevX = -1;
-
-        spo2Data.forEach((dataPoint) => {
-            // Calculate x position - always fills 0 to canvas.width
-            const x = (dataPoint.timestamp - minTimestamp) * pixelsPerMs;
-
-            // Only draw points that are visible in the current window
-            if (x >= 0 && x <= canvas.width) {
-                const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
-                const y = canvas.height - (normalizedY * canvas.height);
-
-                // Check for time gap (more than 20ms between points)
-                const timeDiff = dataPoint.timestamp - prevTimestamp;
-                const shouldBreakLine = !firstPoint && timeDiff > 20;
-
-                if (firstPoint || shouldBreakLine) {
-                    ctx.moveTo(x, y);
-                    firstPoint = false;
-                } else {
-                    ctx.lineTo(x, y);
-                }
-
-                prevTimestamp = dataPoint.timestamp;
-                prevX = x;
-            }
-        }); ctx.stroke();
-
-        // Draw grid
-        ctx.strokeStyle = 'rgba(78, 205, 196, 0.2)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < canvas.height; i += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(canvas.width, i);
-            ctx.stroke();
-        }
-
-        // Draw value labels
-        ctx.fillStyle = '#4ecdc4';
-        ctx.font = '12px Arial';
-        ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 20);
-        ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 35);
-        if (spo2Data.length > 0) {
-            ctx.fillText(`Current: ${spo2Data[spo2Data.length - 1].value.toFixed(0)}`, 10, 50);
-        }
-
-        // Add time scale labels (left = oldest, right = newest)
-        const timeRangeSeconds = actualTimeRange / 1000;
-        ctx.fillText('Start', 10, canvas.height - 10);
-        ctx.fillText(`+${timeRangeSeconds.toFixed(1)}s`, canvas.width - 60, canvas.height - 10);
-    }, [spo2Data]); return (
+    return (
         <main className="monitoring-container">
             <header className="monitor-header">
                 <h1>Patient Monitoring System</h1>
@@ -462,53 +146,61 @@ function App() {
                 </div>
             </header>
 
-            {/* Serial Port Configuration */}
-            <div className="serial-config-panel">
-                <h3>Serial Port Configuration</h3>
+            <div className="controls-section">
                 <div className="serial-controls">
-                    <select
-                        value={selectedPort}
-                        onChange={(e) => setSelectedPort(e.target.value)}
-                        disabled={isConnected}
-                    >
-                        <option value="">Select Port</option>
-                        {serialPorts.map((port, index) => (
-                            <option key={index} value={port.name}>
-                                {port.name} {port.description ? `- ${port.description}` : ''}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="control-group">
+                        <label htmlFor="port-select">Serial Port:</label>
+                        <select
+                            id="port-select"
+                            value={selectedPort}
+                            onChange={(e) => setSelectedPort(e.target.value)}
+                            disabled={isConnected}
+                        >
+                            <option value="">Select a port...</option>
+                            {serialPorts.map((port) => (
+                                <option key={port.name} value={port.name}>
+                                    {port.name} {port.description && `- ${port.description}`}
+                                </option>
+                            ))}
+                        </select>
+                        <button onClick={loadSerialPorts} disabled={isConnected}>
+                            🔄 Refresh
+                        </button>
+                    </div>
 
-                    <input
-                        type="number"
-                        value={baudRate}
-                        onChange={(e) => setBaudRate(parseInt(e.target.value))}
-                        placeholder="Baud Rate"
-                        disabled={isConnected}
-                        min="1200"
-                        max="115200"
-                    />
+                    <div className="control-group">
+                        <label htmlFor="baud-rate">Baud Rate:</label>
+                        <select
+                            id="baud-rate"
+                            value={baudRate}
+                            onChange={(e) => setBaudRate(Number(e.target.value))}
+                            disabled={isConnected}
+                        >
+                            <option value={9600}>9600</option>
+                            <option value={19200}>19200</option>
+                            <option value={38400}>38400</option>
+                            <option value={57600}>57600</option>
+                            <option value={115200}>115200</option>
+                            <option value={230400}>230400</option>
+                        </select>
+                    </div>
 
-                    <button onClick={loadSerialPorts} disabled={isConnected}>
-                        Refresh Ports
-                    </button>
-
-                    {!isConnected ? (
+                    <div className="connection-controls">
                         <button
-                            className="connect-btn"
                             onClick={connectToSerialPort}
-                            disabled={!selectedPort}
+                            disabled={isConnected || !selectedPort}
+                            className="connect-btn"
                         >
                             Connect
                         </button>
-                    ) : (
                         <button
-                            className="disconnect-btn"
                             onClick={disconnectFromSerialPort}
+                            disabled={!isConnected}
+                            className="disconnect-btn"
                         >
                             Disconnect
                         </button>
-                    )}
+                    </div>
                 </div>
 
                 {connectionStatus && (
@@ -520,33 +212,39 @@ function App() {
 
             <div className="waveform-container">
                 <div className="waveform-panel">
-                    <h3 className="waveform-title">Sensor Value 1</h3>
-                    <canvas
-                        ref={ecgCanvasRef}
+                    <Chart
+                        title="Sensor Value 1"
+                        data={ecgData}
+                        color="#ff6b6b"
+                        width={980}
+                        height={140}
                         className="waveform-canvas sensor1"
-                        width={980}
-                        height={140}
-                    ></canvas>
+                        timeWindowMs={5000}
+                    />
                 </div>
 
                 <div className="waveform-panel">
-                    <h3 className="waveform-title">Sensor Value 2</h3>
-                    <canvas
-                        ref={respCanvasRef}
+                    <Chart
+                        title="Sensor Value 2"
+                        data={respData}
+                        color="#4ecdc4"
+                        width={980}
+                        height={140}
                         className="waveform-canvas sensor2"
-                        width={980}
-                        height={140}
-                    ></canvas>
+                        timeWindowMs={5000}
+                    />
                 </div>
 
                 <div className="waveform-panel">
-                    <h3 className="waveform-title">Sensor Value 3</h3>
-                    <canvas
-                        ref={spo2CanvasRef}
-                        className="waveform-canvas sensor3"
+                    <Chart
+                        title="Sensor Value 3"
+                        data={spo2Data}
+                        color="#45b7d1"
                         width={980}
                         height={140}
-                    ></canvas>
+                        className="waveform-canvas sensor3"
+                        timeWindowMs={5000}
+                    />
                 </div>
             </div>
         </main>
