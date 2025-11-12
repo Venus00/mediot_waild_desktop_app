@@ -21,10 +21,10 @@ const Chart = memo<ChartProps>(({
     data,
     color,
     title,
-    width = 800,
-    height = 150,
+    width = 980,
+    height = 140,
     className = "",
-    timeWindowMs = 5000, // Default 5 second window
+    timeWindowMs = 10000, // 10 second scrolling window for medical charts
     min,
     max
 }) => {
@@ -32,7 +32,6 @@ const Chart = memo<ChartProps>(({
     const animationFrameRef = useRef<number>();
 
     useEffect(() => {
-        // OPTIMIZED: Use requestAnimationFrame for smooth rendering
         const render = () => {
             const canvas = canvasRef.current;
             if (!canvas) return;
@@ -48,69 +47,104 @@ const Chart = memo<ChartProps>(({
             canvas.style.height = `${height}px`;
             ctx.scale(dpr, dpr);
 
-            ctx.clearRect(0, 0, width, height);
+            // MEDICAL CHART: Always show chart with grid, even with no data
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
 
-            // If no data, show empty chart
-            if (data.length === 0) {
-                ctx.fillStyle = color;
-                ctx.font = '12px Arial';
-                ctx.fillText(`${title} - No Data`, 10, 15);
-                return;
+            // Draw medical grid - essential for medical charts
+            ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.3)');
+            ctx.lineWidth = 0.5;
+
+            // Major grid lines every 50px
+            for (let i = 0; i < width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < height; i += 25) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+                ctx.stroke();
             }
 
-            // OPTIMIZED: Calculate time-based positioning with smart timeline management
-            const latestTimestamp = Math.max(...data.map((d: TimestampedData) => d.timestamp));
+            // Minor grid lines
+            ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.15)');
+            ctx.lineWidth = 0.25;
+            for (let i = 0; i < width; i += 10) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < height; i += 5) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+                ctx.stroke();
+            }
+
+            // MEDICAL CHART: Always use scrolling window approach
             const now = Date.now();
-            const dataAge = (now - latestTimestamp) / 1000;
+            const windowStart = now - timeWindowMs;
+            const windowEnd = now;
 
-            let windowStart: number;
-            let windowEnd: number;
-            let visibleData: TimestampedData[];
+            // Show data within the scrolling window
+            const visibleData = data.filter((point: TimestampedData) =>
+                point.timestamp >= windowStart && point.timestamp <= windowEnd
+            );
 
-            // Smart window positioning based on data freshness
-            if (dataAge < 2 && data.length > 0) {
-                // LIVE DATA: Use real-time scrolling window
-                windowEnd = now;
-                windowStart = now - timeWindowMs;
-                visibleData = data.filter((point: TimestampedData) => point.timestamp >= windowStart && point.timestamp <= windowEnd);
-            } else {
-                // PAUSED DATA: Show ALL available data
-                visibleData = data;
-                const allTimestamps = data.map((d: TimestampedData) => d.timestamp);
-                const oldestData = Math.min(...allTimestamps);
-                const newestData = Math.max(...allTimestamps);
-                const timeSpan = newestData - oldestData;
-                const padding = Math.max(timeSpan * 0.02, 1000);
-                windowStart = oldestData - padding;
-                windowEnd = newestData + padding;
-            }
+            // Draw title and baseline info
+            ctx.fillStyle = color;
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText(`${title}`, 10, 20);
+
+            ctx.font = '11px Arial';
+            ctx.fillStyle = '#888';
+            ctx.fillText(`${visibleData.length} samples`, 10, height - 30);
+            ctx.fillText(`${(timeWindowMs / 1000)}s window`, 10, height - 15);
 
             if (visibleData.length === 0) {
+                // Show baseline even with no data
+                ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.5)');
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(0, height / 2);
+                ctx.lineTo(width, height / 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
                 ctx.fillStyle = color;
                 ctx.font = '12px Arial';
-                ctx.fillText(`${title} - No Data`, 10, 15);
+                ctx.fillText(`Waiting for ${title} signal...`, width / 2 - 80, height / 2 - 10);
                 return;
             }
 
-            // OPTIMIZED: Use fixed scaling if min/max provided, otherwise auto-scale
+            // MEDICAL SCALING: Auto-scale or use provided min/max
             const values = visibleData.map(d => d.value);
             const minValue = min !== undefined ? min : Math.min(...values);
             const maxValue = max !== undefined ? max : Math.max(...values);
             const range = maxValue - minValue || 1;
             const padding = range * 0.1;
 
-            // Calculate pixels per ms
-            const actualTimeWindow = windowEnd - windowStart;
-            const adjustedPixelsPerMs = width / actualTimeWindow;
+            // SCROLLING ANIMATION: Map time to horizontal position
+            const pixelsPerMs = width / timeWindowMs;
 
-            // OPTIMIZED: Draw the line chart with path for better performance
+            // Draw waveform line
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 2;
             ctx.beginPath();
 
             let firstPoint = true;
             visibleData.forEach((dataPoint: TimestampedData) => {
-                const x = (dataPoint.timestamp - windowStart) * adjustedPixelsPerMs;
+                // Calculate x position relative to current time (scrolling effect)
+                const x = (dataPoint.timestamp - windowStart) * pixelsPerMs;
+
+                // Calculate y position with proper scaling
                 const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
                 const y = height - (normalizedY * height);
 
@@ -123,36 +157,28 @@ const Chart = memo<ChartProps>(({
             });
 
             ctx.stroke();
+            ctx.shadowBlur = 0;
 
-            // OPTIMIZED: Draw grid with reduced opacity for better performance
-            ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.1)');
-            ctx.lineWidth = 1;
-            for (let i = 0; i < width; i += 80) {
-                ctx.beginPath();
-                ctx.moveTo(i, 0);
-                ctx.lineTo(i, height);
-                ctx.stroke();
-            }
-            for (let i = 0; i < height; i += 40) {
-                ctx.beginPath();
-                ctx.moveTo(0, i);
-                ctx.lineTo(width, i);
-                ctx.stroke();
-            }
-
-            // Draw labels
-            ctx.fillStyle = color;
-            ctx.font = '12px Arial';
-            ctx.fillText(`${title}`, 10, 15);
-            ctx.fillText(`Min: ${minValue.toFixed(0)}`, 10, 30);
-            ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 45);
+            // Show current value
             if (visibleData.length > 0) {
-                ctx.fillText(`Current: ${visibleData[visibleData.length - 1].value.toFixed(0)}`, 10, 60);
+                const currentValue = visibleData[visibleData.length - 1].value;
+                ctx.fillStyle = color;
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(`${currentValue.toFixed(1)}`, width - 80, 25);
+
+                ctx.font = '10px Arial';
+                ctx.fillStyle = '#aaa';
+                ctx.fillText(`Range: ${minValue.toFixed(0)} - ${maxValue.toFixed(0)}`, width - 120, height - 15);
             }
         };
 
-        // Use requestAnimationFrame for smooth rendering
-        animationFrameRef.current = requestAnimationFrame(render);
+        // Continuous animation for medical chart scrolling effect
+        const animate = () => {
+            render();
+            animationFrameRef.current = requestAnimationFrame(animate);
+        };
+
+        animate();
 
         return () => {
             if (animationFrameRef.current) {
@@ -164,7 +190,12 @@ const Chart = memo<ChartProps>(({
     return (
         <canvas
             ref={canvasRef}
-            style={{ width: `${width}px`, height: `${height}px` }}
+            style={{
+                width: `${width}px`,
+                height: `${height}px`,
+                border: '1px solid #333',
+                borderRadius: '4px'
+            }}
             className={className}
         />
     );

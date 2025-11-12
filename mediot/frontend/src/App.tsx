@@ -196,7 +196,7 @@ function App() {
             } else {
                 console.log('Skipping data cleanup - preserving data during interruption');
             }
-        }, 60000); // Run every 1 minute (less aggressive)
+        }, 60000);
 
         return () => clearInterval(cleanup);
     }, [isMonitoring, isConnected, isTestMode, cleanupData]);
@@ -221,7 +221,6 @@ function App() {
             if (result.success) {
                 setIsConnected(true);
                 setConnectionStatus(result.message);
-                // Clear previous data when connecting
                 setEcgData([]);
                 setRespData([]);
                 setSpo2Data([]);
@@ -400,7 +399,7 @@ function App() {
                         width={980}
                         height={140}
                         className="waveform-canvas-sensor1"
-                        timeWindowMs={5000}
+                        timeWindowMs={10000}
                     />
                 </div>
                 <div className="waveform-panel">
@@ -411,7 +410,7 @@ function App() {
                         width={980}
                         height={140}
                         className="waveform-canvas-sensor2"
-                        timeWindowMs={5000}
+                        timeWindowMs={10000}
                     />
                 </div>
 
@@ -423,7 +422,7 @@ function App() {
                         width={980}
                         height={140}
                         className="waveform-canvas-sensor3"
-                        timeWindowMs={5000}
+                        timeWindowMs={10000}
                     />
                 </div>
             </div>
