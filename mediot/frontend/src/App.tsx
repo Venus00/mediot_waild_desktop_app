@@ -9,6 +9,50 @@ interface TimestampedData {
     value: number;
 }
 
+// RASPBERRY PI: Circular buffer for memory efficiency
+class CircularBuffer {
+    private buffer: TimestampedData[];
+    private head: number = 0;
+    private size: number = 0;
+    private readonly capacity: number;
+
+    constructor(capacity: number = 1000) { // Max 1000 points for Raspberry Pi
+        this.capacity = capacity;
+        this.buffer = new Array(capacity);
+    }
+
+    push(data: TimestampedData): void {
+        this.buffer[this.head] = data;
+        this.head = (this.head + 1) % this.capacity;
+        if (this.size < this.capacity) {
+            this.size++;
+        }
+    }
+
+    toArray(): TimestampedData[] {
+        if (this.size === 0) return [];
+
+        const result = new Array(this.size);
+        let sourceIndex = this.size < this.capacity ? 0 : this.head;
+
+        for (let i = 0; i < this.size; i++) {
+            result[i] = this.buffer[sourceIndex];
+            sourceIndex = (sourceIndex + 1) % this.capacity;
+        }
+
+        return result;
+    }
+
+    clear(): void {
+        this.head = 0;
+        this.size = 0;
+    }
+
+    length(): number {
+        return this.size;
+    }
+}
+
 function App() {
     const [serialPorts, setSerialPorts] = useState<main.SerialPortInfo[]>([]);
     const [selectedPort, setSelectedPort] = useState<string>('');
@@ -18,10 +62,21 @@ function App() {
     const [isMonitoring, setIsMonitoring] = useState<boolean>(true);
     const [isTestMode, setIsTestMode] = useState<boolean>(false);
 
-    // Data arrays for three sensors
-    const [ecgData, setEcgData] = useState<TimestampedData[]>([]);
-    const [respData, setRespData] = useState<TimestampedData[]>([]);
-    const [spo2Data, setSpo2Data] = useState<TimestampedData[]>([]);
+    // RASPBERRY PI: Use circular buffers instead of growing arrays
+    const [ecgBuffer] = useState(() => new CircularBuffer(1000));
+    const [respBuffer] = useState(() => new CircularBuffer(1000));
+    const [spo2Buffer] = useState(() => new CircularBuffer(1000));
+
+    // State to trigger re-renders when buffers update
+    const [bufferUpdateCount, setBufferUpdateCount] = useState(0);
+
+    // Memory monitoring for Raspberry Pi
+    const [memoryUsage, setMemoryUsage] = useState<{ heap: number, total: number } | null>(null);
+
+    // Convert buffers to arrays for chart rendering (memoized)
+    const ecgData = useMemo(() => ecgBuffer.toArray(), [bufferUpdateCount]);
+    const respData = useMemo(() => respBuffer.toArray(), [bufferUpdateCount]);
+    const spo2Data = useMemo(() => spo2Buffer.toArray(), [bufferUpdateCount]);
 
     // OPTIMIZED: Memoized data statistics to prevent recalculation on every render
     const dataStats = useMemo(() => ({
@@ -119,10 +174,13 @@ function App() {
                 const newRespPoint = { timestamp, value: respValue };
                 const newSpo2Point = { timestamp, value: spo2Value };
 
-                // Use functional updates with batching (React 18 automatic batching)
-                setEcgData(prev => [...prev, newDataPoint]);
-                setRespData(prev => [...prev, newRespPoint]);
-                setSpo2Data(prev => [...prev, newSpo2Point]);
+                // RASPBERRY PI: Use circular buffers instead of growing arrays
+                ecgBuffer.push(newDataPoint);
+                respBuffer.push(newRespPoint);
+                spo2Buffer.push(newSpo2Point);
+
+                // Trigger re-render for charts
+                setBufferUpdateCount(prev => prev + 1);
 
             } else if (isConnected) {
                 // REAL MODE: Read actual serial port data
@@ -135,22 +193,16 @@ function App() {
                             console.log(`Read ${sensorData.length} sensor data points from serial port`);
                         }
 
-                        // OPTIMIZED: Batch process all sensor data points
-                        const ecgPoints: TimestampedData[] = [];
-                        const respPoints: TimestampedData[] = [];
-                        const spo2Points: TimestampedData[] = [];
-
+                        // RASPBERRY PI: Add to circular buffers instead of arrays
                         sensorData.forEach(data => {
                             const dataTimestamp = new Date(data.timestamp).getTime();
-                            ecgPoints.push({ timestamp: dataTimestamp, value: data.value1 });
-                            respPoints.push({ timestamp: dataTimestamp, value: data.value2 });
-                            spo2Points.push({ timestamp: dataTimestamp, value: data.value3 });
+                            ecgBuffer.push({ timestamp: dataTimestamp, value: data.value1 });
+                            respBuffer.push({ timestamp: dataTimestamp, value: data.value2 });
+                            spo2Buffer.push({ timestamp: dataTimestamp, value: data.value3 });
                         });
 
-                        // Batch update all arrays at once (reduces re-renders from N*3 to 3)
-                        setEcgData(prev => [...prev, ...ecgPoints]);
-                        setRespData(prev => [...prev, ...respPoints]);
-                        setSpo2Data(prev => [...prev, ...spo2Points]);
+                        // Trigger re-render for charts
+                        setBufferUpdateCount(prev => prev + 1);
 
                         // OPTIMIZED: Reduce debug logging frequency
                         if (timestamp % 500 < 10) {
@@ -172,12 +224,15 @@ function App() {
                     console.log('Generating zero data points - no signal input');
                 }
 
-                // Update with zero values to keep charts active
-                setEcgData(prev => [...prev, zeroEcg]);
-                setRespData(prev => [...prev, zeroResp]);
-                setSpo2Data(prev => [...prev, zeroSpo2]);
+                // RASPBERRY PI: Add zero values to circular buffers
+                ecgBuffer.push(zeroEcg);
+                respBuffer.push(zeroResp);
+                spo2Buffer.push(zeroSpo2);
+
+                // Trigger re-render for charts
+                setBufferUpdateCount(prev => prev + 1);
             }
-        }, isTestMode ? 4 : (isConnected ? 100 : 50)); // 4ms for test mode (250Hz), 100ms for real data, 50ms for zero data
+        }, isTestMode ? 8 : (isConnected ? 200 : 100)); // RASPBERRY PI: Slower intervals - 8ms test (125Hz vs 250Hz), 200ms real data, 100ms zero data
 
         return () => {
             console.log('Stopping data generation interval');
@@ -185,38 +240,29 @@ function App() {
         };
     }, [isConnected, isMonitoring, isTestMode]);
 
-    // OPTIMIZED: Memoized cleanup function to prevent unnecessary re-creations
-    const cleanupData = useCallback((dataArray: TimestampedData[], cutoffTime: number, minPoints: number = 100): TimestampedData[] => {
-        const filtered = dataArray.filter(point => point.timestamp >= cutoffTime);
-        return filtered.length >= minPoints ? filtered : dataArray.slice(-minPoints);
-    }, []);
-
-    // Intelligent cleanup of old data - preserves data continuity during interruptions
+    // RASPBERRY PI: Memory monitoring
     useEffect(() => {
-        const cleanup = setInterval(() => {
-            const now = Date.now();
+        const memoryMonitor = setInterval(() => {
+            if ((performance as any).memory) {
+                const memory = (performance as any).memory;
+                setMemoryUsage({
+                    heap: Math.round(memory.usedJSHeapSize / 1024 / 1024),
+                    total: Math.round(memory.totalJSHeapSize / 1024 / 1024)
+                });
 
-            // More intelligent cleanup: Only clean up if we're actively receiving data
-            // This preserves historical data during interruptions
-            const shouldCleanup = isMonitoring && (isConnected || isTestMode);
-
-            if (shouldCleanup) {
-                const maxAge = 300000; // Keep 5 minutes of data when actively monitoring
-                const cutoffTime = now - maxAge;
-
-                // OPTIMIZED: Batch cleanup operations
-                setEcgData(prev => cleanupData(prev, cutoffTime));
-                setRespData(prev => cleanupData(prev, cutoffTime));
-                setSpo2Data(prev => cleanupData(prev, cutoffTime));
-
-                console.log('Data cleanup performed - preserving historical data for continuity');
-            } else {
-                console.log('Skipping data cleanup - preserving data during interruption');
+                // Aggressive cleanup if memory usage is high (> 50MB on Raspberry Pi)
+                if (memory.usedJSHeapSize > 50 * 1024 * 1024) {
+                    console.log('High memory usage detected, forcing cleanup');
+                    ecgBuffer.clear();
+                    respBuffer.clear();
+                    spo2Buffer.clear();
+                    setBufferUpdateCount(prev => prev + 1);
+                }
             }
-        }, 60000);
+        }, 5000); // Check every 5 seconds
 
-        return () => clearInterval(cleanup);
-    }, [isMonitoring, isConnected, isTestMode, cleanupData]);
+        return () => clearInterval(memoryMonitor);
+    }, [ecgBuffer, respBuffer, spo2Buffer]);
 
     const loadSerialPorts = async () => {
         try {
@@ -238,9 +284,11 @@ function App() {
             if (result.success) {
                 setIsConnected(true);
                 setConnectionStatus(result.message);
-                setEcgData([]);
-                setRespData([]);
-                setSpo2Data([]);
+                // RASPBERRY PI: Clear circular buffers instead of arrays
+                ecgBuffer.clear();
+                respBuffer.clear();
+                spo2Buffer.clear();
+                setBufferUpdateCount(prev => prev + 1);
             } else {
                 setConnectionStatus(result.message);
             }
@@ -264,10 +312,11 @@ function App() {
     const startTestMode = () => {
         setIsTestMode(true);
         setConnectionStatus('Test mode active - generating random data');
-        // Clear previous data when starting test mode
-        setEcgData([]);
-        setRespData([]);
-        setSpo2Data([]);
+        // RASPBERRY PI: Clear circular buffers for test mode
+        ecgBuffer.clear();
+        respBuffer.clear();
+        spo2Buffer.clear();
+        setBufferUpdateCount(prev => prev + 1);
     };
 
     const stopTestMode = () => {
@@ -294,6 +343,9 @@ function App() {
                     }}>
                         {dataStats.totalPoints > 0 && (
                             `${dataStats.totalPoints} pts | ${dataStats.dataRate.toFixed(0)} Hz`
+                        )}
+                        {memoryUsage && (
+                            ` | RAM: ${memoryUsage.heap}MB/${memoryUsage.total}MB`
                         )}
                     </span>
 

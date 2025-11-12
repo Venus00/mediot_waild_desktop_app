@@ -17,6 +17,7 @@ interface ChartProps {
     max?: number; // Optional fixed max value for scaling
 }
 
+// RASPBERRY PI: Optimized Chart component with reduced rendering frequency
 const Chart = memo<ChartProps>(({
     data,
     color,
@@ -30,9 +31,17 @@ const Chart = memo<ChartProps>(({
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationFrameRef = useRef<number>();
+    const lastRenderTime = useRef<number>(0);
+    const renderInterval = 33; // RASPBERRY PI: Limit to ~30 FPS instead of 60 FPS
 
     useEffect(() => {
-        const render = () => {
+        const render = (currentTime: number) => {
+            // RASPBERRY PI: Throttle rendering to reduce GPU load
+            if (currentTime - lastRenderTime.current < renderInterval) {
+                animationFrameRef.current = requestAnimationFrame(render);
+                return;
+            }
+            lastRenderTime.current = currentTime;
             const canvas = canvasRef.current;
             if (!canvas) return;
 
@@ -41,11 +50,13 @@ const Chart = memo<ChartProps>(({
 
             // Set canvas size for crisp rendering
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = width * dpr;
-            canvas.height = height * dpr;
+            // RASPBERRY PI: Use lower DPR to reduce memory usage
+            const effectiveDpr = Math.min(dpr, 1.5); // Cap at 1.5x for Raspberry Pi
+            canvas.width = width * effectiveDpr;
+            canvas.height = height * effectiveDpr;
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
-            ctx.scale(dpr, dpr);
+            ctx.scale(effectiveDpr, effectiveDpr);
 
             // MEDICAL CHART: Clean chart with black background
             ctx.fillStyle = '#000';
@@ -194,12 +205,13 @@ const Chart = memo<ChartProps>(({
         };
 
         // Continuous animation for medical chart scrolling effect
-        const animate = () => {
-            render();
+        const animate = (currentTime: number) => {
+            render(currentTime);
             animationFrameRef.current = requestAnimationFrame(animate);
         };
 
-        animate();
+        // Start animation
+        animationFrameRef.current = requestAnimationFrame(animate);
 
         return () => {
             if (animationFrameRef.current) {
