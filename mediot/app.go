@@ -150,7 +150,7 @@ func (a *App) ReadSensorData() (*SensorData, error) {
 	}
 
 	// Set read timeout
-	a.serialPort.SetReadTimeout(100 * time.Millisecond)
+	a.serialPort.SetReadTimeout(10 * time.Millisecond)
 
 	// Read available data from serial port
 	tempBuffer := make([]byte, 100)

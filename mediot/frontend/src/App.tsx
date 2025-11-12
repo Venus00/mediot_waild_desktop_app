@@ -130,7 +130,7 @@ function App() {
                 console.error('Error reading sensor data:', error);
                 // Don't update connection status here to avoid spam
             }
-        }, 100); // Read every 100ms for smooth updates
+        }, 4); // Read every 4ms to match serial data rate (250 Hz)
     };
 
     const stopSensorDataReading = () => {
