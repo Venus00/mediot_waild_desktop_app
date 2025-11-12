@@ -58,38 +58,108 @@ const Chart = memo<ChartProps>(({
             canvas.style.height = `${height}px`;
             ctx.scale(effectiveDpr, effectiveDpr);
 
-            // MEDICAL CHART: Clean chart with black background
+            // MEDICAL CHART: Medical monitor background with grid
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
 
-            // MEDICAL CHART: Always use left-to-right scrolling window approach            // MEDICAL CHART: Always use left-to-right scrolling window approach
+            // MEDICAL GRID: Draw medical-style grid
+            ctx.strokeStyle = 'rgba(0, 255, 65, 0.1)';
+            ctx.lineWidth = 0.5;
+
+            // Major grid lines (every 50 pixels)
+            const majorGridX = 50;
+            const majorGridY = 25;
+
+            for (let x = 0; x <= width; x += majorGridX) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= height; y += majorGridY) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Minor grid lines
+            ctx.strokeStyle = 'rgba(0, 255, 65, 0.05)';
+            const minorGridX = majorGridX / 5;
+            const minorGridY = majorGridY / 5;
+
+            for (let x = 0; x <= width; x += minorGridX) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= height; y += minorGridY) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // MEDICAL CHART: Time window filtering
             const now = Date.now();
             const windowStart = now - timeWindowMs;
             const windowEnd = now;
 
-            // Show data within the scrolling window
+            // Filter data to current time window
             const visibleData = data.filter((point: TimestampedData) =>
                 point.timestamp >= windowStart && point.timestamp <= windowEnd
             );
 
-            // Draw title and baseline info
-            ctx.fillStyle = color;
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText(`${title}`, 10, 20);
-
-            ctx.font = '11px Arial';
-            ctx.fillStyle = '#888';
-            ctx.fillText(`${visibleData.length} samples`, 10, height - 30);
-            ctx.fillText(`${(timeWindowMs / 1000)}s window`, 10, height - 15);
-
-            // MEDICAL SCALING: Auto-scale or use provided min/max
+            // MEDICAL SCALING: Calculate value range
             let minValue: number, maxValue: number, range: number, padding: number;
 
             if (visibleData.length === 0) {
-                // No data: show waiting message
+                // MEDICAL BASELINE: Show flat line at 0 when no data
+                const baselineData: TimestampedData[] = [];
+                const numPoints = Math.floor(width / 5);
+
+                for (let i = 0; i < numPoints; i++) {
+                    const timestamp = windowStart + (i / (numPoints - 1)) * timeWindowMs;
+                    baselineData.push({ timestamp, value: 0 });
+                }
+
+                // Use baseline for display
+                const baseMinValue = min !== undefined ? min : -10;
+                const baseMaxValue = max !== undefined ? max : 10;
+                const baseRange = baseMaxValue - baseMinValue || 1;
+                const basePadding = baseRange * 0.1;
+
+                // Draw baseline
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.3;
+                ctx.beginPath();
+
+                let firstPoint = true;
+                baselineData.forEach((dataPoint: TimestampedData) => {
+                    const timeProgress = (dataPoint.timestamp - windowStart) / timeWindowMs;
+                    const x = timeProgress * width;
+                    const normalizedY = (0 - baseMinValue + basePadding) / (baseRange + 2 * basePadding);
+                    const y = height - (normalizedY * height);
+
+                    if (firstPoint) {
+                        ctx.moveTo(x, y);
+                        firstPoint = false;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+
+                // Status text
                 ctx.fillStyle = color;
-                ctx.font = '12px Arial';
-                ctx.fillText(`Waiting for ${title} signal...`, width / 2 - 80, height / 2 - 10);
+                ctx.font = '10px Arial';
+                ctx.fillText('NO SIGNAL', width - 80, 20);
                 return;
             }
 
@@ -226,8 +296,9 @@ const Chart = memo<ChartProps>(({
             style={{
                 width: `${width}px`,
                 height: `${height}px`,
-                border: '1px solid #333',
-                borderRadius: '4px'
+                background: 'transparent',
+                border: 'none',
+                display: 'block'
             }}
             className={className}
         />
