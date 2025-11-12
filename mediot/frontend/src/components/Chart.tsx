@@ -40,7 +40,6 @@ const Chart: React.FC<ChartProps> = ({
             ctx.fillStyle = color;
             ctx.font = '12px Arial';
             ctx.fillText(`${title} - No Data`, 10, 15);
-            ctx.fillText(`Window: ${timeWindowMs / 1000}s`, 10, canvas.height - 10);
             return;
         }
 
@@ -83,10 +82,10 @@ const Chart: React.FC<ChartProps> = ({
 
         // Extract values for scaling from visible data only
         if (visibleData.length === 0) {
-            // Show empty chart with time labels
+            // Show empty chart
             ctx.fillStyle = color;
             ctx.font = '12px Arial';
-            ctx.fillText(`${title} - No Data in Window`, 10, 15);
+            ctx.fillText(`${title} - No Data`, 10, 15);
             return;
         }
 
@@ -96,13 +95,12 @@ const Chart: React.FC<ChartProps> = ({
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        // Draw the line chart based on timestamps with gap detection
+        // Draw the line chart - continuous line without gap detection
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.beginPath();
 
         let firstPoint = true;
-        let prevTimestamp = 0;
 
         visibleData.forEach((dataPoint) => {
             // Calculate x position using adjusted window (prevents data spreading)
@@ -112,18 +110,12 @@ const Chart: React.FC<ChartProps> = ({
             const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
             const y = canvas.height - (normalizedY * canvas.height);
 
-            // Check for time gap (more than 100ms between points = significant data loss)
-            const timeDiff = dataPoint.timestamp - prevTimestamp;
-            const shouldBreakLine = !firstPoint && timeDiff > 100;
-
-            if (firstPoint || shouldBreakLine) {
+            if (firstPoint) {
                 ctx.moveTo(x, y);
                 firstPoint = false;
             } else {
                 ctx.lineTo(x, y);
             }
-
-            prevTimestamp = dataPoint.timestamp;
         });
 
         ctx.stroke();
@@ -153,44 +145,6 @@ const Chart: React.FC<ChartProps> = ({
         ctx.fillText(`Max: ${maxValue.toFixed(0)}`, 10, 45);
         if (visibleData.length > 0) {
             ctx.fillText(`Current: ${visibleData[visibleData.length - 1].value.toFixed(0)}`, 10, 60);
-
-            // Show data density info for debugging/monitoring
-            const dataTimeSpan = Math.max(...visibleData.map(d => d.timestamp)) - Math.min(...visibleData.map(d => d.timestamp));
-            const actualPoints = visibleData.length;
-            const expectedPoints = Math.max(dataTimeSpan / 4, 1); // Expected at 250Hz
-            const density = actualPoints / expectedPoints;
-
-            if (density < 0.8 && actualPoints > 10) {
-                ctx.fillStyle = '#ffaa00'; // Orange for low density warning
-                ctx.fillStyle = color;
-            }
-        }
-
-        // Add time scale labels showing actual data timeline
-        const actualTimeWindowSeconds = actualTimeWindow / 1000;
-
-        // Draw data status indicator (reuse existing dataAge and now variables)
-        if (dataAge < 1) {
-            // Recent data - show as "live"
-            ctx.fillStyle = '#00ff00'; // Green for live
-            ctx.fillText('● LIVE', canvas.width - 50, canvas.height - 25);
-            ctx.fillStyle = color;
-            ctx.fillText('Live', canvas.width - 30, canvas.height - 10);
-            ctx.fillText(`-${timeWindowMs / 1000}s`, 10, canvas.height - 10);
-        } else if (dataAge < 10) {
-            // Recent but not live - show age  
-            ctx.fillStyle = '#ffaa00'; // Orange for recent
-            ctx.fillText('● PAUSED', canvas.width - 65, canvas.height - 25);
-            ctx.fillStyle = color;
-            ctx.fillText(`${dataAge.toFixed(0)}s ago`, canvas.width - 50, canvas.height - 10);
-            ctx.fillText(`${actualTimeWindowSeconds.toFixed(1)}s span`, 10, canvas.height - 10);
-        } else {
-            // Old data
-            ctx.fillStyle = '#ff0000'; // Red for old
-            ctx.fillText('● STALE', canvas.width - 55, canvas.height - 25);
-            ctx.fillStyle = color;
-            ctx.fillText(`${dataAge.toFixed(0)}s ago`, canvas.width - 50, canvas.height - 10);
-            ctx.fillText(`${actualTimeWindowSeconds.toFixed(1)}s span`, 10, canvas.height - 10);
         }
 
         ctx.fillStyle = color;

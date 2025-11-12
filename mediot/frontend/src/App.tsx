@@ -16,7 +16,6 @@ function App() {
     const [isConnected, setIsConnected] = useState<boolean>(false);
     const [connectionStatus, setConnectionStatus] = useState<string>('');
     const [isMonitoring, setIsMonitoring] = useState<boolean>(true);
-    const [dataGapDetected, setDataGapDetected] = useState<boolean>(false);
     const [isTestMode, setIsTestMode] = useState<boolean>(false);
 
     // Data arrays for three sensors
@@ -102,24 +101,10 @@ function App() {
 
                 console.log(`Test mode data - ECG: ${ecgValue.toFixed(1)}, Resp: ${respValue.toFixed(1)}, SpO2: ${spo2Value.toFixed(1)}`);
 
-                // Add test data to arrays
-                const timeWindow = 30000; // Keep 30 seconds of data
-                const cutoffTime = timestamp - timeWindow;
-
-                setEcgData(prev => {
-                    const newData = [...prev, { timestamp, value: ecgValue }];
-                    return newData.filter(point => point.timestamp >= cutoffTime);
-                });
-
-                setRespData(prev => {
-                    const newData = [...prev, { timestamp, value: respValue }];
-                    return newData.filter(point => point.timestamp >= cutoffTime);
-                });
-
-                setSpo2Data(prev => {
-                    const newData = [...prev, { timestamp, value: spo2Value }];
-                    return newData.filter(point => point.timestamp >= cutoffTime);
-                });
+                // Add test data to arrays - preserve continuity during interruptions
+                setEcgData(prev => [...prev, { timestamp, value: ecgValue }]);
+                setRespData(prev => [...prev, { timestamp, value: respValue }]);
+                setSpo2Data(prev => [...prev, { timestamp, value: spo2Value }]);
 
             } else if (isConnected) {
                 // REAL MODE: Read actual serial port data
@@ -133,25 +118,10 @@ function App() {
                         sensorData.forEach(data => {
                             const dataTimestamp = new Date(data.timestamp).getTime();
 
-                            // Add real sensor data to arrays
-                            // Assuming: Value1 = ECG, Value2 = Respiratory, Value3 = SpO2
-                            const timeWindow = 30000; // Keep 30 seconds of data
-                            const cutoffTime = dataTimestamp - timeWindow;
-
-                            setEcgData(prev => {
-                                const newData = [...prev, { timestamp: dataTimestamp, value: data.value1 }];
-                                return newData.filter(point => point.timestamp >= cutoffTime);
-                            });
-
-                            setRespData(prev => {
-                                const newData = [...prev, { timestamp: dataTimestamp, value: data.value2 }];
-                                return newData.filter(point => point.timestamp >= cutoffTime);
-                            });
-
-                            setSpo2Data(prev => {
-                                const newData = [...prev, { timestamp: dataTimestamp, value: data.value3 }];
-                                return newData.filter(point => point.timestamp >= cutoffTime);
-                            });
+                            // Add real sensor data to arrays - preserve continuity during interruptions
+                            setEcgData(prev => [...prev, { timestamp: dataTimestamp, value: data.value1 }]);
+                            setRespData(prev => [...prev, { timestamp: dataTimestamp, value: data.value2 }]);
+                            setSpo2Data(prev => [...prev, { timestamp: dataTimestamp, value: data.value3 }]);
                         });
 
                         console.log(`Real data - ECG: ${sensorData[sensorData.length - 1].value1.toFixed(1)}, Resp: ${sensorData[sensorData.length - 1].value2.toFixed(1)}, SpO2: ${sensorData[sensorData.length - 1].value3.toFixed(1)}`);
@@ -160,7 +130,7 @@ function App() {
                     console.error('Error reading sensor data:', error);
                 }
             }
-        }, isTestMode ? 4 : 50); // 4ms for test mode (250Hz), 50ms for real data reading
+        }, isTestMode ? 4 : 100); // 4ms for test mode (250Hz), 50ms for real data reading
 
         return () => {
             console.log('Stopping data generation interval');
@@ -168,37 +138,43 @@ function App() {
         };
     }, [isConnected, isMonitoring, isTestMode]);
 
-    // Periodic cleanup of old data (runs every 30 seconds)
+    // Intelligent cleanup of old data - preserves data continuity during interruptions
     useEffect(() => {
         const cleanup = setInterval(() => {
             const now = Date.now();
-            const maxAge = 60000; // Keep maximum 60 seconds of data
-            const cutoffTime = now - maxAge;
 
-            setEcgData(prev => prev.filter(point => point.timestamp >= cutoffTime));
-            setRespData(prev => prev.filter(point => point.timestamp >= cutoffTime));
-            setSpo2Data(prev => prev.filter(point => point.timestamp >= cutoffTime));
-        }, 30000); // Run every 30 seconds
+            // More intelligent cleanup: Only clean up if we're actively receiving data
+            // This preserves historical data during interruptions
+            const shouldCleanup = isMonitoring && (isConnected || isTestMode);
+
+            if (shouldCleanup) {
+                const maxAge = 300000; // Keep 5 minutes of data when actively monitoring
+                const cutoffTime = now - maxAge;
+
+                setEcgData(prev => {
+                    // Keep at least 100 points even if they're old (for continuity)
+                    const filtered = prev.filter(point => point.timestamp >= cutoffTime);
+                    return filtered.length >= 100 ? filtered : prev.slice(-100);
+                });
+
+                setRespData(prev => {
+                    const filtered = prev.filter(point => point.timestamp >= cutoffTime);
+                    return filtered.length >= 100 ? filtered : prev.slice(-100);
+                });
+
+                setSpo2Data(prev => {
+                    const filtered = prev.filter(point => point.timestamp >= cutoffTime);
+                    return filtered.length >= 100 ? filtered : prev.slice(-100);
+                });
+
+                console.log('Data cleanup performed - preserving historical data for continuity');
+            } else {
+                console.log('Skipping data cleanup - preserving data during interruption');
+            }
+        }, 60000); // Run every 1 minute (less aggressive)
 
         return () => clearInterval(cleanup);
-    }, []);
-
-    // Monitor for data gaps
-    useEffect(() => {
-        const checkDataGap = () => {
-            const now = Date.now();
-            const threshold = 100; // 100ms threshold for gap detection
-
-            const ecgGap = ecgData.length > 0 && (now - ecgData[ecgData.length - 1].timestamp) > threshold;
-            const respGap = respData.length > 0 && (now - respData[respData.length - 1].timestamp) > threshold;
-            const spo2Gap = spo2Data.length > 0 && (now - spo2Data[spo2Data.length - 1].timestamp) > threshold;
-
-            setDataGapDetected(ecgGap || respGap || spo2Gap);
-        };
-
-        const gapCheckInterval = setInterval(checkDataGap, 50);
-        return () => clearInterval(gapCheckInterval);
-    }, [ecgData, respData, spo2Data]);
+    }, [isMonitoring, isConnected, isTestMode]);
 
     const loadSerialPorts = async () => {
         try {
@@ -268,11 +244,6 @@ function App() {
                     <span className={`data-source ${isConnected ? 'real-data' : isTestMode ? 'test-data' : 'disconnected'}`}>
                         {isConnected ? 'SERIAL DATA' : isTestMode ? 'TEST DATA' : 'DISCONNECTED'}
                     </span>
-                    {dataGapDetected && isConnected && (
-                        <span className="data-gap-warning">
-                            ⚠️ DATA GAP
-                        </span>
-                    )}
                     <button
                         className="toggle-btn"
                         onClick={() => setIsMonitoring(!isMonitoring)}

@@ -154,11 +154,14 @@ func (a *App) serialReader() {
 		// Process all complete lines except the last one (which might be incomplete)
 		for i := 0; i < len(lines)-1; i++ {
 			line := strings.TrimSpace(lines[i])
+
 			if line != "" {
 				sensorData, err := a.parseHexData(line)
 				if err == nil {
 					// Add to parsed data buffer
 					a.parsedDataBuffer = append(a.parsedDataBuffer, *sensorData)
+					log.Printf("Parsed sensor data - ECG: %.1f, Resp: %.1f, SpO2: %.1f",
+						sensorData.Value1, sensorData.Value2, sensorData.Value3)
 				} else {
 					log.Printf("Error parsing line '%s': %v", line, err)
 				}
@@ -230,7 +233,10 @@ func (a *App) ReadSensorData() ([]SensorData, error) {
 	// Clear the buffer after returning data
 	a.parsedDataBuffer = a.parsedDataBuffer[:0]
 
-	log.Printf("Returning %d sensor data points", len(result))
+	if len(result) > 0 {
+		log.Printf("Returning %d sensor data points to frontend", len(result))
+	}
+
 	return result, nil
 }
 
@@ -241,6 +247,7 @@ func (a *App) parseHexData(dataStr string) (*SensorData, error) {
 
 	// Expected format: "0xvalue1,0xvalue2,0xvalue3"
 	parts := strings.Split(dataStr, ",")
+
 	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid format: expected 3 hex values, got %d in '%s'", len(parts), dataStr)
 	}
@@ -248,6 +255,7 @@ func (a *App) parseHexData(dataStr string) (*SensorData, error) {
 	// Check if all parts are valid hex format
 	for i, part := range parts[:3] {
 		part = strings.TrimSpace(part)
+
 		if !strings.HasPrefix(part, "0x") && !strings.HasPrefix(part, "0X") {
 			return nil, fmt.Errorf("part %d '%s' is not valid hex format", i+1, part)
 		}
@@ -267,12 +275,16 @@ func (a *App) parseHexData(dataStr string) (*SensorData, error) {
 		return nil, fmt.Errorf("error parsing hex values: %v, %v, %v", err1, err2, err3)
 	}
 
-	log.Printf("Successfully parsed hex values: %d, %d, %d", value1, value2, value3)
+	// Apply basic scaling to convert raw values to medical ranges
+	// These scaling factors may need adjustment based on your specific sensor
+	ecgValue := float64(value1) / 100.0   // Scale ECG to reasonable mV range
+	respValue := float64(value2) / 200.0  // Scale respiratory signal
+	spo2Value := float64(value3) / 1000.0 // Scale SpO2 signal
 
 	return &SensorData{
-		Value1:    float64(value1),
-		Value2:    float64(value2),
-		Value3:    float64(value3),
+		Value1:    ecgValue,
+		Value2:    respValue,
+		Value3:    spo2Value,
 		Timestamp: time.Now(),
 	}, nil
 }
