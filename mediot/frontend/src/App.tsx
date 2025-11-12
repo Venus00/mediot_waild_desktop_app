@@ -31,7 +31,7 @@ function App() {
     const startTimeRef = useRef<number>(Date.now());
     const chartUpdateIntervalRef = useRef<number | null>(null);
 
-    const maxDataPoints = 1000;
+    const maxDataPoints = 10000;
 
     // Serial port functions
     const loadSerialPorts = async () => {
