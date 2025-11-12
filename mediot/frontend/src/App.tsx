@@ -13,6 +13,8 @@ function App() {
     const [respirationData, setRespirationData] = useState<TimestampedData[]>([]);
     const [spo2Data, setSpo2Data] = useState<TimestampedData[]>([]);
     const [isMonitoring, setIsMonitoring] = useState(true);
+    const [lastDataTime, setLastDataTime] = useState<number>(0);
+    const [dataGapDetected, setDataGapDetected] = useState(false);
 
     // Serial port state
     const [serialPorts, setSerialPorts] = useState<main.SerialPortInfo[]>([]);
@@ -26,12 +28,9 @@ function App() {
     const respCanvasRef = useRef<HTMLCanvasElement>(null);
     const spo2CanvasRef = useRef<HTMLCanvasElement>(null);
 
-    // For maintaining 4ms intervals between data points
-    const dataPointCounterRef = useRef<number>(0);
-    const startTimeRef = useRef<number>(Date.now());
     const chartUpdateIntervalRef = useRef<number | null>(null);
 
-    const maxDataPoints = 10000;
+    const maxDataPoints = 1000;
 
     // Serial port functions
     const loadSerialPorts = async () => {
@@ -54,10 +53,6 @@ function App() {
                 setIsConnected(true);
                 setConnectionStatus(result.message);
 
-                // Reset timestamp tracking for new connection
-                dataPointCounterRef.current = 0;
-                startTimeRef.current = Date.now();
-
                 // Start reading sensor data
                 startSensorDataReading();
             } else {
@@ -75,6 +70,8 @@ function App() {
             setIsConnected(false);
             setSensorData(null);
             setConnectionStatus(result.message);
+            setDataGapDetected(false);
+            setLastDataTime(0);
 
             // Stop reading sensor data
             stopSensorDataReading();
@@ -96,34 +93,50 @@ function App() {
             try {
                 const dataArray = await ReadSensorData();
 
-                // Process each data point in the array
-                dataArray.forEach(data => {
-                    setSensorData(data);
+                if (dataArray.length > 0) {
+                    // Reset gap detection when data is received
+                    setDataGapDetected(false);
 
-                    // Calculate timestamp with 4ms interval
-                    const timestamp = startTimeRef.current + (dataPointCounterRef.current * 4);
-                    dataPointCounterRef.current++;
+                    // Process each data point in the array
+                    dataArray.forEach(data => {
+                        setSensorData(data);
 
-                    // Update waveform data with timestamps
-                    setEcgData(prev => {
-                        const newData = [...prev, { timestamp, value: data.value1 }];
-                        return newData.slice(-maxDataPoints);
+                        // Use the actual timestamp from the backend (convert to milliseconds)
+                        const timestamp = new Date(data.timestamp).getTime();
+
+                        // Check for data gaps (if more than 20ms between data points)
+                        if (lastDataTime > 0 && (timestamp - lastDataTime) > 20) {
+                            console.log(`Data gap detected: ${timestamp - lastDataTime}ms`);
+                        }
+                        setLastDataTime(timestamp);
+
+                        // Update waveform data with real timestamps
+                        setEcgData(prev => {
+                            const newData = [...prev, { timestamp, value: data.value1 }];
+                            return newData.slice(-maxDataPoints);
+                        });
+
+                        setRespirationData(prev => {
+                            const newData = [...prev, { timestamp, value: data.value2 }];
+                            return newData.slice(-maxDataPoints);
+                        });
+
+                        setSpo2Data(prev => {
+                            const newData = [...prev, { timestamp, value: data.value3 }];
+                            return newData.slice(-maxDataPoints);
+                        });
                     });
-
-                    setRespirationData(prev => {
-                        const newData = [...prev, { timestamp, value: data.value2 }];
-                        return newData.slice(-maxDataPoints);
-                    });
-
-                    setSpo2Data(prev => {
-                        const newData = [...prev, { timestamp, value: data.value3 }];
-                        return newData.slice(-maxDataPoints);
-                    });
-                });
+                } else {
+                    // No data received, check if we should mark a gap
+                    const now = Date.now();
+                    if (lastDataTime > 0 && (now - lastDataTime) > 100) {
+                        setDataGapDetected(true);
+                    }
+                }
 
             } catch (error) {
                 console.error('Error reading sensor data:', error);
-                // Don't update connection status here to avoid spam
+                setDataGapDetected(true);
             }
         }, 100); // Read buffered data every 100ms
 
@@ -194,12 +207,14 @@ function App() {
         const timeWindow = 4000; // 4 seconds visible
         const pixelsPerMs = canvas.width / timeWindow;
 
-        // Draw the line chart based on timestamps
+        // Draw the line chart based on timestamps with gap detection
         ctx.strokeStyle = '#00ff00';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
         let firstPoint = true;
+        let prevTimestamp = 0;
+
         ecgData.forEach((dataPoint) => {
             // Calculate x position based on timestamp
             const timeOffset = currentTime - dataPoint.timestamp;
@@ -210,16 +225,20 @@ function App() {
                 const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
                 const y = canvas.height - (normalizedY * canvas.height);
 
-                if (firstPoint) {
+                // Check for time gap (more than 20ms between points)
+                const timeDiff = dataPoint.timestamp - prevTimestamp;
+                const shouldBreakLine = !firstPoint && timeDiff > 20;
+
+                if (firstPoint || shouldBreakLine) {
                     ctx.moveTo(x, y);
                     firstPoint = false;
                 } else {
                     ctx.lineTo(x, y);
                 }
-            }
-        });
 
-        ctx.stroke();
+                prevTimestamp = dataPoint.timestamp;
+            }
+        }); ctx.stroke();
 
         // Draw grid
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
@@ -273,12 +292,14 @@ function App() {
         const timeWindow = 4000; // 4 seconds visible
         const pixelsPerMs = canvas.width / timeWindow;
 
-        // Draw the line chart based on timestamps
+        // Draw the line chart based on timestamps with gap detection
         ctx.strokeStyle = '#ff6b6b';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
         let firstPoint = true;
+        let prevTimestamp = 0;
+
         respirationData.forEach((dataPoint) => {
             // Calculate x position based on timestamp
             const timeOffset = currentTime - dataPoint.timestamp;
@@ -289,16 +310,20 @@ function App() {
                 const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
                 const y = canvas.height - (normalizedY * canvas.height);
 
-                if (firstPoint) {
+                // Check for time gap (more than 20ms between points)
+                const timeDiff = dataPoint.timestamp - prevTimestamp;
+                const shouldBreakLine = !firstPoint && timeDiff > 20;
+
+                if (firstPoint || shouldBreakLine) {
                     ctx.moveTo(x, y);
                     firstPoint = false;
                 } else {
                     ctx.lineTo(x, y);
                 }
-            }
-        });
 
-        ctx.stroke();
+                prevTimestamp = dataPoint.timestamp;
+            }
+        }); ctx.stroke();
 
         // Draw grid
         ctx.strokeStyle = 'rgba(255, 107, 107, 0.2)';
@@ -352,12 +377,14 @@ function App() {
         const timeWindow = 4000; // 4 seconds visible
         const pixelsPerMs = canvas.width / timeWindow;
 
-        // Draw the line chart based on timestamps
+        // Draw the line chart based on timestamps with gap detection
         ctx.strokeStyle = '#4ecdc4';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
         let firstPoint = true;
+        let prevTimestamp = 0;
+
         spo2Data.forEach((dataPoint) => {
             // Calculate x position based on timestamp
             const timeOffset = currentTime - dataPoint.timestamp;
@@ -368,16 +395,20 @@ function App() {
                 const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
                 const y = canvas.height - (normalizedY * canvas.height);
 
-                if (firstPoint) {
+                // Check for time gap (more than 20ms between points)
+                const timeDiff = dataPoint.timestamp - prevTimestamp;
+                const shouldBreakLine = !firstPoint && timeDiff > 20;
+
+                if (firstPoint || shouldBreakLine) {
                     ctx.moveTo(x, y);
                     firstPoint = false;
                 } else {
                     ctx.lineTo(x, y);
                 }
-            }
-        });
 
-        ctx.stroke();
+                prevTimestamp = dataPoint.timestamp;
+            }
+        }); ctx.stroke();
 
         // Draw grid
         ctx.strokeStyle = 'rgba(78, 205, 196, 0.2)';
@@ -419,6 +450,11 @@ function App() {
                     <span className={`data-source ${isConnected ? 'real-data' : 'disconnected'}`}>
                         {isConnected ? 'SERIAL DATA' : 'DISCONNECTED'}
                     </span>
+                    {dataGapDetected && isConnected && (
+                        <span className="data-gap-warning">
+                            ⚠️ DATA GAP
+                        </span>
+                    )}
                     <button
                         className="toggle-btn"
                         onClick={() => setIsMonitoring(!isMonitoring)}
