@@ -47,45 +47,11 @@ const Chart = memo<ChartProps>(({
             canvas.style.height = `${height}px`;
             ctx.scale(dpr, dpr);
 
-            // MEDICAL CHART: Always show chart with grid, even with no data
+            // MEDICAL CHART: Clean chart with black background
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw medical grid - essential for medical charts
-            ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.3)');
-            ctx.lineWidth = 0.5;
-
-            // Major grid lines every 50px
-            for (let i = 0; i < width; i += 50) {
-                ctx.beginPath();
-                ctx.moveTo(i, 0);
-                ctx.lineTo(i, height);
-                ctx.stroke();
-            }
-            for (let i = 0; i < height; i += 25) {
-                ctx.beginPath();
-                ctx.moveTo(0, i);
-                ctx.lineTo(width, i);
-                ctx.stroke();
-            }
-
-            // Minor grid lines
-            ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.15)');
-            ctx.lineWidth = 0.25;
-            for (let i = 0; i < width; i += 10) {
-                ctx.beginPath();
-                ctx.moveTo(i, 0);
-                ctx.lineTo(i, height);
-                ctx.stroke();
-            }
-            for (let i = 0; i < height; i += 5) {
-                ctx.beginPath();
-                ctx.moveTo(0, i);
-                ctx.lineTo(width, i);
-                ctx.stroke();
-            }
-
-            // MEDICAL CHART: Always use scrolling window approach
+            // MEDICAL CHART: Always use left-to-right scrolling window approach            // MEDICAL CHART: Always use left-to-right scrolling window approach
             const now = Date.now();
             const windowStart = now - timeWindowMs;
             const windowEnd = now;
@@ -129,10 +95,56 @@ const Chart = memo<ChartProps>(({
             const range = maxValue - minValue || 1;
             const padding = range * 0.1;
 
-            // SCROLLING ANIMATION: Map time to horizontal position
-            const pixelsPerMs = width / timeWindowMs;
+            // OSCILLOSCOPE SWEEP: Calculate sweep position and cycle
+            const sweepCycleMs = timeWindowMs; // Complete sweep every timeWindow
+            const sweepPosition = (now % sweepCycleMs) / sweepCycleMs; // 0-1 position in sweep
+            const sweepX = sweepPosition * width; // Current X position of sweep
 
-            // Draw waveform line
+            // Get data for current cycle AND previous cycle for smooth transition
+            const cycleStart = now - (now % sweepCycleMs);
+            const prevCycleStart = cycleStart - sweepCycleMs;
+
+            // Current cycle data (being written)
+            const currentCycleData = data.filter((point: TimestampedData) =>
+                point.timestamp >= cycleStart && point.timestamp <= now
+            );
+
+            // Previous cycle data (old data to be overwritten)
+            const prevCycleData = data.filter((point: TimestampedData) =>
+                point.timestamp >= prevCycleStart && point.timestamp < cycleStart
+            );
+
+            // FIRST: Draw previous cycle data (old data) with reduced opacity
+            if (prevCycleData.length > 0) {
+                ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.4)');
+                ctx.lineWidth = 1.5;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 1;
+                ctx.beginPath();
+
+                let firstPoint = true;
+                prevCycleData.forEach((dataPoint: TimestampedData) => {
+                    // Map previous cycle data to current screen position
+                    const timeInPrevCycle = dataPoint.timestamp - prevCycleStart;
+                    const x = (timeInPrevCycle / sweepCycleMs) * width;
+
+                    // Only draw old data that hasn't been overwritten yet
+                    if (x > sweepX) {
+                        const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
+                        const y = height - (normalizedY * height);
+
+                        if (firstPoint) {
+                            ctx.moveTo(x, y);
+                            firstPoint = false;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                });
+                ctx.stroke();
+            }
+
+            // SECOND: Draw current cycle data (new data being written)
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.shadowColor = color;
@@ -140,35 +152,51 @@ const Chart = memo<ChartProps>(({
             ctx.beginPath();
 
             let firstPoint = true;
-            visibleData.forEach((dataPoint: TimestampedData) => {
-                // Calculate x position relative to current time (scrolling effect)
-                const x = (dataPoint.timestamp - windowStart) * pixelsPerMs;
+            currentCycleData.forEach((dataPoint: TimestampedData) => {
+                // SWEEP: Calculate x position within current sweep cycle
+                const timeInCycle = dataPoint.timestamp - cycleStart;
+                const x = (timeInCycle / sweepCycleMs) * width;
 
                 // Calculate y position with proper scaling
                 const normalizedY = (dataPoint.value - minValue + padding) / (range + 2 * padding);
                 const y = height - (normalizedY * height);
 
-                if (firstPoint) {
-                    ctx.moveTo(x, y);
-                    firstPoint = false;
-                } else {
-                    ctx.lineTo(x, y);
+                // Draw all points in current sweep cycle
+                if (x >= 0 && x <= sweepX) { // Only draw up to sweep position
+                    if (firstPoint) {
+                        ctx.moveTo(x, y);
+                        firstPoint = false;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
                 }
             });
 
             ctx.stroke();
             ctx.shadowBlur = 0;
 
-            // Show current value
-            if (visibleData.length > 0) {
-                const currentValue = visibleData[visibleData.length - 1].value;
+            // Clear zone after current writing position to avoid misconception
+            const clearZoneWidth = 20; // 20 pixels clear zone
+            ctx.fillStyle = '#000'; // Black background to clear old data
+            if (sweepX + clearZoneWidth <= width) {
+                ctx.fillRect(sweepX, 0, clearZoneWidth, height);
+            } else {
+                // Handle wrap-around clear zone
+                ctx.fillRect(sweepX, 0, width - sweepX, height);
+                ctx.fillRect(0, 0, clearZoneWidth - (width - sweepX), height);
+            }
+
+            // Show current value and sweep information
+            if (currentCycleData.length > 0) {
+                const currentValue = currentCycleData[currentCycleData.length - 1].value;
                 ctx.fillStyle = color;
                 ctx.font = 'bold 16px Arial';
                 ctx.fillText(`${currentValue.toFixed(1)}`, width - 80, 25);
 
                 ctx.font = '10px Arial';
                 ctx.fillStyle = '#aaa';
-                ctx.fillText(`Range: ${minValue.toFixed(0)} - ${maxValue.toFixed(0)}`, width - 120, height - 15);
+                ctx.fillText(`Range: ${minValue.toFixed(0)} - ${maxValue.toFixed(0)}`, width - 120, height - 30);
+                ctx.fillText(`Sweep: ${(sweepPosition * 100).toFixed(0)}%`, width - 120, height - 15);
             }
         };
 
