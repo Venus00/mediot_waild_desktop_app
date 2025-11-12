@@ -199,7 +199,9 @@ function App() {
         }, 60000); // Run every 1 minute (less aggressive)
 
         return () => clearInterval(cleanup);
-    }, [isMonitoring, isConnected, isTestMode, cleanupData]); const loadSerialPorts = async () => {
+    }, [isMonitoring, isConnected, isTestMode, cleanupData]);
+
+    const loadSerialPorts = async () => {
         try {
             const ports = await GetSerialPorts();
             setSerialPorts(ports || []);
@@ -399,8 +401,6 @@ function App() {
                         height={140}
                         className="waveform-canvas-sensor1"
                         timeWindowMs={5000}
-                        min={-300}
-                        max={300}
                     />
                 </div>
                 <div className="waveform-panel">
@@ -412,8 +412,6 @@ function App() {
                         height={140}
                         className="waveform-canvas-sensor2"
                         timeWindowMs={5000}
-                        min={-50}
-                        max={50}
                     />
                 </div>
 
@@ -426,8 +424,6 @@ function App() {
                         height={140}
                         className="waveform-canvas-sensor3"
                         timeWindowMs={5000}
-                        min={95}
-                        max={100}
                     />
                 </div>
             </div>
