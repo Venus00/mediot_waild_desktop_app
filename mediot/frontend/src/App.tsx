@@ -37,19 +37,20 @@ function App() {
         loadSerialPorts();
     }, []);
 
-    // Simulate receiving data from serial port OR generate test data
+    // Simulate receiving data from serial port, generate test data, or generate zero data when idle
     useEffect(() => {
-        if ((!isConnected && !isTestMode) || !isMonitoring) {
-            console.log(`Data generation stopped - Connected: ${isConnected}, TestMode: ${isTestMode}, Monitoring: ${isMonitoring}`);
+        if (!isMonitoring) {
+            console.log(`Data generation stopped - Monitoring: ${isMonitoring}`);
             return;
         }
 
-        console.log(`Starting data generation - TestMode: ${isTestMode}`);
+        // Always run the interval - determine behavior inside the interval
+        console.log(`Starting data generation - Connected: ${isConnected}, TestMode: ${isTestMode}, Monitoring: ${isMonitoring}`);
 
         const interval = setInterval(async () => {
             const timestamp = Date.now();
 
-            if (isTestMode) {
+            if (isTestMode && isConnected === false) {
                 // TEST MODE: Generate realistic medical waveforms
                 let ecgValue: number, respValue: number, spo2Value: number;
 
@@ -159,8 +160,24 @@ function App() {
                 } catch (error) {
                     console.error('Error reading sensor data:', error);
                 }
+            } else {
+                // IDLE MODE: Generate zero data points to maintain chart animation
+                // This keeps the oscilloscope active even when no real data is available
+                const zeroEcg = { timestamp, value: 0 };
+                const zeroResp = { timestamp, value: 0 };
+                const zeroSpo2 = { timestamp, value: 0 };
+
+                // OPTIMIZED: Reduce debug logging for zero data
+                if (timestamp % 1000 < 10) {
+                    console.log('Generating zero data points - no signal input');
+                }
+
+                // Update with zero values to keep charts active
+                setEcgData(prev => [...prev, zeroEcg]);
+                setRespData(prev => [...prev, zeroResp]);
+                setSpo2Data(prev => [...prev, zeroSpo2]);
             }
-        }, isTestMode ? 4 : 100); // 4ms for test mode (250Hz), 50ms for real data reading
+        }, isTestMode ? 4 : (isConnected ? 100 : 50)); // 4ms for test mode (250Hz), 100ms for real data, 50ms for zero data
 
         return () => {
             console.log('Stopping data generation interval');

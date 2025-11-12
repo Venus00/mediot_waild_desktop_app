@@ -71,51 +71,22 @@ const Chart = memo<ChartProps>(({
             ctx.fillText(`${visibleData.length} samples`, 10, height - 30);
             ctx.fillText(`${(timeWindowMs / 1000)}s window`, 10, height - 15);
 
-            // MEDICAL SCALING: Auto-scale or use provided min/max, ensuring 0 is always visible
+            // MEDICAL SCALING: Auto-scale or use provided min/max
             let minValue: number, maxValue: number, range: number, padding: number;
 
             if (visibleData.length === 0) {
-                // No data: default range centered on 0
-                minValue = min !== undefined ? min : -50;
-                maxValue = max !== undefined ? max : 50;
-                range = maxValue - minValue;
-                padding = range * 0.1;
-            } else {
-                // With data: ensure 0 is always included in the range
-                const values = visibleData.map(d => d.value);
-                const dataMin = Math.min(...values);
-                const dataMax = Math.max(...values);
-
-                minValue = min !== undefined ? min : Math.min(dataMin, 0);
-                maxValue = max !== undefined ? max : Math.max(dataMax, 0);
-                range = maxValue - minValue || 1;
-                padding = range * 0.1;
-            }
-
-            // Always draw the zero baseline reference line
-            const zeroY = height - ((0 - minValue + padding) / (range + 2 * padding) * height);
-            if (zeroY >= 0 && zeroY <= height) {
-                ctx.strokeStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.3)');
-                ctx.lineWidth = 1;
-                ctx.setLineDash([3, 3]);
-                ctx.beginPath();
-                ctx.moveTo(0, zeroY);
-                ctx.lineTo(width, zeroY);
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                // Label the zero line
-                ctx.fillStyle = color.replace('rgb(', 'rgba(').replace(')', ', 0.6)');
-                ctx.font = '10px Arial';
-                ctx.fillText('0', 5, zeroY - 5);
-            }
-
-            if (visibleData.length === 0) {
+                // No data: show waiting message
                 ctx.fillStyle = color;
                 ctx.font = '12px Arial';
                 ctx.fillText(`Waiting for ${title} signal...`, width / 2 - 80, height / 2 - 10);
                 return;
             }
+
+            const values = visibleData.map(d => d.value);
+            minValue = min !== undefined ? min : Math.min(...values);
+            maxValue = max !== undefined ? max : Math.max(...values);
+            range = maxValue - minValue || 1;
+            padding = range * 0.1;
 
             // OSCILLOSCOPE SWEEP: Calculate sweep position and cycle
             const sweepCycleMs = timeWindowMs; // Complete sweep every timeWindow
