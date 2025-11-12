@@ -185,15 +185,15 @@ function App() {
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        // Calculate time-based positioning (left to right)
+        // Calculate time-based positioning (left to right) - TRUE FULL WIDTH
         if (ecgData.length === 0) return;
 
-        // Use a fixed time window to always fill the canvas width
-        const timeWindowMs = 4000; // 4 seconds visible window
+        // Find actual data time range and stretch to full canvas width
         const timestamps = ecgData.map(d => d.timestamp);
+        const minTimestamp = Math.min(...timestamps);
         const maxTimestamp = Math.max(...timestamps);
-        const minTimestamp = maxTimestamp - timeWindowMs; // Rolling window
-        const pixelsPerMs = canvas.width / timeWindowMs;
+        const actualTimeRange = Math.max(maxTimestamp - minTimestamp, 100); // Minimum 100ms
+        const pixelsPerMs = canvas.width / actualTimeRange; // Stretch to full width
 
         // Draw the line chart based on timestamps with gap detection
         ctx.strokeStyle = '#00ff00';
@@ -205,7 +205,7 @@ function App() {
         let prevX = -1;
 
         ecgData.forEach((dataPoint) => {
-            // Calculate x position from left to right based on rolling window
+            // Calculate x position - always fills 0 to canvas.width
             const x = (dataPoint.timestamp - minTimestamp) * pixelsPerMs;
 
             // Only draw points that are visible in the current window
@@ -255,7 +255,7 @@ function App() {
         }
 
         // Add time scale labels (left = oldest, right = newest)
-        const timeRangeSeconds = timeWindowMs / 1000;
+        const timeRangeSeconds = actualTimeRange / 1000;
         ctx.fillText('Start', 10, canvas.height - 10);
         ctx.fillText(`+${timeRangeSeconds.toFixed(1)}s`, canvas.width - 60, canvas.height - 10);
     }, [ecgData]);    // Draw Sensor Value 2 chart
@@ -275,15 +275,15 @@ function App() {
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        // Calculate time-based positioning (left to right)
+        // Calculate time-based positioning (left to right) - TRUE FULL WIDTH
         if (respirationData.length === 0) return;
 
-        // Use a fixed time window to always fill the canvas width
-        const timeWindowMs = 4000; // 4 seconds visible window
+        // Find actual data time range and stretch to full canvas width
         const timestamps = respirationData.map(d => d.timestamp);
+        const minTimestamp = Math.min(...timestamps);
         const maxTimestamp = Math.max(...timestamps);
-        const minTimestamp = maxTimestamp - timeWindowMs; // Rolling window
-        const pixelsPerMs = canvas.width / timeWindowMs;
+        const actualTimeRange = Math.max(maxTimestamp - minTimestamp, 100); // Minimum 100ms
+        const pixelsPerMs = canvas.width / actualTimeRange; // Stretch to full width
 
         // Draw the line chart based on timestamps with gap detection
         ctx.strokeStyle = '#ff6b6b';
@@ -295,7 +295,7 @@ function App() {
         let prevX = -1;
 
         respirationData.forEach((dataPoint) => {
-            // Calculate x position from left to right based on rolling window
+            // Calculate x position - always fills 0 to canvas.width
             const x = (dataPoint.timestamp - minTimestamp) * pixelsPerMs;
 
             // Only draw points that are visible in the current window
@@ -345,7 +345,7 @@ function App() {
         }
 
         // Add time scale labels (left = oldest, right = newest)
-        const timeRangeSeconds = timeWindowMs / 1000;
+        const timeRangeSeconds = actualTimeRange / 1000;
         ctx.fillText('Start', 10, canvas.height - 10);
         ctx.fillText(`+${timeRangeSeconds.toFixed(1)}s`, canvas.width - 60, canvas.height - 10);
     }, [respirationData]);    // Draw Sensor Value 3 chart
@@ -365,15 +365,15 @@ function App() {
         const range = maxValue - minValue || 1;
         const padding = range * 0.1;
 
-        // Calculate time-based positioning (left to right)
+        // Calculate time-based positioning (left to right) - TRUE FULL WIDTH
         if (spo2Data.length === 0) return;
 
-        // Use a fixed time window to always fill the canvas width
-        const timeWindowMs = 4000; // 4 seconds visible window
+        // Find actual data time range and stretch to full canvas width
         const timestamps = spo2Data.map(d => d.timestamp);
+        const minTimestamp = Math.min(...timestamps);
         const maxTimestamp = Math.max(...timestamps);
-        const minTimestamp = maxTimestamp - timeWindowMs; // Rolling window
-        const pixelsPerMs = canvas.width / timeWindowMs;
+        const actualTimeRange = Math.max(maxTimestamp - minTimestamp, 100); // Minimum 100ms
+        const pixelsPerMs = canvas.width / actualTimeRange; // Stretch to full width
 
         // Draw the line chart based on timestamps with gap detection
         ctx.strokeStyle = '#4ecdc4';
@@ -385,7 +385,7 @@ function App() {
         let prevX = -1;
 
         spo2Data.forEach((dataPoint) => {
-            // Calculate x position from left to right based on rolling window
+            // Calculate x position - always fills 0 to canvas.width
             const x = (dataPoint.timestamp - minTimestamp) * pixelsPerMs;
 
             // Only draw points that are visible in the current window
@@ -435,7 +435,7 @@ function App() {
         }
 
         // Add time scale labels (left = oldest, right = newest)
-        const timeRangeSeconds = timeWindowMs / 1000;
+        const timeRangeSeconds = actualTimeRange / 1000;
         ctx.fillText('Start', 10, canvas.height - 10);
         ctx.fillText(`+${timeRangeSeconds.toFixed(1)}s`, canvas.width - 60, canvas.height - 10);
     }, [spo2Data]); return (
