@@ -3,6 +3,7 @@ import './App.css';
 import { GetSerialPorts, ConnectToSerialPort, DisconnectFromSerialPort } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import Chart from './components/Chart';
+import UPlotChart from './components/UPlotChart';
 
 interface TimestampedData {
     timestamp: number;
@@ -40,26 +41,45 @@ function App() {
             const respValue = 40 + Math.cos(timestamp / 500) * 15 + (Math.random() - 0.5) * 3;
             const spo2Value = 95 + Math.sin(timestamp / 300) * 3 + (Math.random() - 0.5) * 2;
 
-            // Add new data points
+            // Add new data points with TIMELINE-BASED MANAGEMENT
+            // Keep data based on time window, not point count
+            const timeWindow = 30000; // Keep 30 seconds of data (much larger buffer)
+            const cutoffTime = timestamp - timeWindow;
+
             setEcgData(prev => {
                 const newData = [...prev, { timestamp, value: ecgValue }];
-                // Keep only last 5 seconds of data (5000ms / 4ms = 1250 points)
-                return newData.slice(-1250);
+                // Remove only data older than our time window
+                return newData.filter(point => point.timestamp >= cutoffTime);
             });
 
             setRespData(prev => {
                 const newData = [...prev, { timestamp, value: respValue }];
-                return newData.slice(-1250);
+                return newData.filter(point => point.timestamp >= cutoffTime);
             });
 
             setSpo2Data(prev => {
                 const newData = [...prev, { timestamp, value: spo2Value }];
-                return newData.slice(-1250);
+                return newData.filter(point => point.timestamp >= cutoffTime);
             });
         }, 4); // 4ms interval for 250Hz sampling
 
         return () => clearInterval(interval);
     }, [isConnected, isMonitoring]);
+
+    // Periodic cleanup of old data (runs every 30 seconds)
+    useEffect(() => {
+        const cleanup = setInterval(() => {
+            const now = Date.now();
+            const maxAge = 60000; // Keep maximum 60 seconds of data
+            const cutoffTime = now - maxAge;
+
+            setEcgData(prev => prev.filter(point => point.timestamp >= cutoffTime));
+            setRespData(prev => prev.filter(point => point.timestamp >= cutoffTime));
+            setSpo2Data(prev => prev.filter(point => point.timestamp >= cutoffTime));
+        }, 30000); // Run every 30 seconds
+
+        return () => clearInterval(cleanup);
+    }, []);
 
     // Monitor for data gaps
     useEffect(() => {
@@ -212,19 +232,20 @@ function App() {
 
             <div className="waveform-container">
                 <div className="waveform-panel">
-                    <Chart
-                        title="Sensor Value 1"
+                    <h4 style={{ margin: '0 0 10px 0', color: '#4ecdc4' }}>UPlot Chart (New) - High Performance</h4>
+                    <UPlotChart
+                        title="Sensor Value 2"
                         data={ecgData}
-                        color="#ff6b6b"
+                        color="#4ecdc4"
                         width={980}
                         height={140}
                         className="waveform-canvas sensor1"
                         timeWindowMs={5000}
                     />
                 </div>
-
                 <div className="waveform-panel">
-                    <Chart
+                    <h4 style={{ margin: '0 0 10px 0', color: '#4ecdc4' }}>UPlot Chart (New) - High Performance</h4>
+                    <UPlotChart
                         title="Sensor Value 2"
                         data={respData}
                         color="#4ecdc4"
@@ -236,7 +257,7 @@ function App() {
                 </div>
 
                 <div className="waveform-panel">
-                    <Chart
+                    <UPlotChart
                         title="Sensor Value 3"
                         data={spo2Data}
                         color="#45b7d1"

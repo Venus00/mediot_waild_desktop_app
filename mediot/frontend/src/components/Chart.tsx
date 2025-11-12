@@ -52,39 +52,32 @@ const Chart: React.FC<ChartProps> = ({
 
         let windowStart: number;
         let windowEnd: number;
+        let visibleData: TimestampedData[];
 
-        // Smart window positioning based on data freshness and density
+        // Smart window positioning based on data freshness
         if (dataAge < 2 && data.length > 0) {
-            // Live or recent data - use real-time window
+            // LIVE DATA: Use real-time 5-second scrolling window
             windowEnd = now;
             windowStart = now - timeWindowMs;
+            visibleData = data.filter(point => point.timestamp >= windowStart && point.timestamp <= windowEnd);
         } else {
-            // Paused/old data - use data-based window to prevent spreading
-            windowEnd = latestTimestamp;
-            windowStart = latestTimestamp - timeWindowMs;
+            // PAUSED DATA: Show ALL available data (no time window restriction)
+            visibleData = data;
+
+            // Set window bounds to encompass all data
+            const allTimestamps = data.map(d => d.timestamp);
+            const oldestData = Math.min(...allTimestamps);
+            const newestData = Math.max(...allTimestamps);
+
+            // Add small padding (2% on each side)
+            const timeSpan = newestData - oldestData;
+            const padding = Math.max(timeSpan * 0.02, 1000); // At least 1 second padding
+
+            windowStart = oldestData - padding;
+            windowEnd = newestData + padding;
         }
 
-        const pixelsPerMs = canvas.width / timeWindowMs; // Fixed scaling
-
-        // Filter data to only show points within the time window
-        const visibleData = data.filter(point => point.timestamp >= windowStart && point.timestamp <= windowEnd);
-
-        // Check data density to prevent spreading
-        if (visibleData.length > 0) {
-            const dataTimeSpan = Math.max(...visibleData.map(d => d.timestamp)) - Math.min(...visibleData.map(d => d.timestamp));
-            const expectedPoints = (dataTimeSpan / 4); // Expected at 250Hz (4ms intervals)
-            const actualPoints = visibleData.length;
-            const density = actualPoints / Math.max(expectedPoints, 1);
-
-            // If data is too sparse (< 50% expected density), adjust window to maintain visual continuity
-            if (density < 0.5 && dataAge > 1) {
-                const adjustedTimeWindow = Math.min(dataTimeSpan * 1.2, timeWindowMs);
-                windowStart = latestTimestamp - adjustedTimeWindow;
-                windowEnd = latestTimestamp;
-            }
-        }
-
-        // Recalculate pixelsPerMs after potential window adjustment
+        // Calculate pixels per ms based on actual time span shown
         const actualTimeWindow = windowEnd - windowStart;
         const adjustedPixelsPerMs = canvas.width / actualTimeWindow;
 
@@ -176,7 +169,7 @@ const Chart: React.FC<ChartProps> = ({
         }
 
         // Add time scale labels showing actual data timeline
-        const timeWindowSeconds = timeWindowMs / 1000;
+        const actualTimeWindowSeconds = actualTimeWindow / 1000;
 
         // Draw data status indicator (reuse existing dataAge and now variables)
         if (dataAge < 1) {
@@ -185,22 +178,24 @@ const Chart: React.FC<ChartProps> = ({
             ctx.fillText('● LIVE', canvas.width - 50, canvas.height - 25);
             ctx.fillStyle = color;
             ctx.fillText('Live', canvas.width - 30, canvas.height - 10);
+            ctx.fillText(`-${timeWindowMs / 1000}s`, 10, canvas.height - 10);
         } else if (dataAge < 10) {
-            // Recent but not live - show age
+            // Recent but not live - show age  
             ctx.fillStyle = '#ffaa00'; // Orange for recent
             ctx.fillText('● PAUSED', canvas.width - 65, canvas.height - 25);
             ctx.fillStyle = color;
             ctx.fillText(`${dataAge.toFixed(0)}s ago`, canvas.width - 50, canvas.height - 10);
+            ctx.fillText(`${actualTimeWindowSeconds.toFixed(1)}s span`, 10, canvas.height - 10);
         } else {
             // Old data
             ctx.fillStyle = '#ff0000'; // Red for old
             ctx.fillText('● STALE', canvas.width - 55, canvas.height - 25);
             ctx.fillStyle = color;
             ctx.fillText(`${dataAge.toFixed(0)}s ago`, canvas.width - 50, canvas.height - 10);
+            ctx.fillText(`${actualTimeWindowSeconds.toFixed(1)}s span`, 10, canvas.height - 10);
         }
 
         ctx.fillStyle = color;
-        ctx.fillText(`-${timeWindowSeconds}s`, 10, canvas.height - 10);
     }, [data, color, title, timeWindowMs]);
 
     return (

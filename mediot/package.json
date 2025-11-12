@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "react-uplot": "^0.0.9",
+    "uplot": "^1.6.32"
+  }
+}
