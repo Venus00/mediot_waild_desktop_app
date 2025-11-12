@@ -166,20 +166,65 @@ func (a *App) ReadSensorData() (*SensorData, error) {
 		return nil, fmt.Errorf("no data received")
 	}
 
-	// Log raw data from serial port
-	dataStr := strings.TrimSpace(string(tempBuffer[:n]))
-	log.Printf("Raw serial data: '%s'", dataStr)
+	// Add new data to buffer
+	a.dataBuffer = append(a.dataBuffer, tempBuffer[:n]...)
 
-	// Parse hex format data (e.g., "0x215c,0x3711,0xffffa4d9")
-	return a.parseHexData(dataStr)
+	// Log raw data from serial port
+	log.Printf("Raw serial data: '%s'", string(tempBuffer[:n]))
+	log.Printf("Buffer now contains: '%s'", string(a.dataBuffer))
+
+	// Look for complete lines (ending with newline)
+	dataStr := string(a.dataBuffer)
+	lines := strings.Split(dataStr, "\n")
+
+	// Process all complete lines except the last one (which might be incomplete)
+	for i := 0; i < len(lines)-1; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			log.Printf("Processing complete line: '%s'", line)
+			result, err := a.parseHexData(line)
+			if err == nil {
+				// Remove processed data from buffer
+				processedLength := len(strings.Join(lines[:i+1], "\n")) + 1
+				a.dataBuffer = a.dataBuffer[processedLength:]
+				return result, nil
+			} else {
+				log.Printf("Error parsing line '%s': %v", line, err)
+			}
+		}
+	}
+
+	// If buffer gets too large, clear it
+	if len(a.dataBuffer) > 500 {
+		log.Printf("Buffer too large, clearing: '%s'", string(a.dataBuffer))
+		a.dataBuffer = a.dataBuffer[:0]
+	}
+
+	return nil, fmt.Errorf("waiting for complete data line")
 }
 
 // parseHexData parses comma-separated hex values (e.g., "0x215c,0x3711,0xffffa4d9")
 func (a *App) parseHexData(dataStr string) (*SensorData, error) {
+	// Clean the data string
+	dataStr = strings.TrimSpace(dataStr)
+
 	// Expected format: "0xvalue1,0xvalue2,0xvalue3"
 	parts := strings.Split(dataStr, ",")
 	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid format: expected 3 hex values, got %d", len(parts))
+		return nil, fmt.Errorf("invalid format: expected 3 hex values, got %d in '%s'", len(parts), dataStr)
+	}
+
+	// Check if all parts are valid hex format
+	for i, part := range parts[:3] {
+		part = strings.TrimSpace(part)
+		if !strings.HasPrefix(part, "0x") && !strings.HasPrefix(part, "0X") {
+			return nil, fmt.Errorf("part %d '%s' is not valid hex format", i+1, part)
+		}
+		// Check if hex part has enough characters
+		hexPart := part[2:]
+		if len(hexPart) == 0 || len(hexPart) > 8 {
+			return nil, fmt.Errorf("part %d '%s' has invalid hex length", i+1, part)
+		}
 	}
 
 	// Parse hex values to int32
@@ -191,7 +236,7 @@ func (a *App) parseHexData(dataStr string) (*SensorData, error) {
 		return nil, fmt.Errorf("error parsing hex values: %v, %v, %v", err1, err2, err3)
 	}
 
-	log.Printf("Parsed hex values: %d, %d, %d", value1, value2, value3)
+	log.Printf("Successfully parsed hex values: %d, %d, %d", value1, value2, value3)
 
 	return &SensorData{
 		Value1:    float64(value1),
